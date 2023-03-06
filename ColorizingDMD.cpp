@@ -1777,6 +1777,40 @@ void ConvertCopyToGradient(int xd, int yd, int xf, int yf)
     }
 }
 
+float distance(int cx,int cy,int x, int y)
+{
+    float vx = (float)cx - (float)x;
+    float vy = (float)cy - (float)y;
+    return (float)sqrt(vx * vx + vy * vy);
+}
+
+void ConvertCopyToRadialGradient(int xd, int yd, int xf, int yf)
+{
+    float vnorm = distance(xf, yf, xd, yd);
+    float range = (float)(max(Draw_Grad_Fin, Draw_Grad_Ini) - min(Draw_Grad_Fin, Draw_Grad_Ini) + 1);
+    for (int tj = 0; tj < (int)MycRom.fHeight; tj++)
+    {
+        for (int ti = 0; ti < (int)MycRom.fWidth; ti++)
+        {
+            if (Copy_Mask[tj * MycRom.fWidth + ti] > 0)
+            {
+                float rayon = distance(xd, yd, ti, tj);
+
+                if (rayon >= vnorm)
+                {
+                    for (unsigned int tk = 0; tk < nSelFrames; tk++) MycRom.cFrames[SelFrames[tk] * MycRom.fWidth * MycRom.fHeight + tj * MycRom.fWidth + ti] =
+                        max(Draw_Grad_Fin, Draw_Grad_Ini);
+                }
+                else
+                {
+                    for (unsigned int tk = 0; tk < nSelFrames; tk++) MycRom.cFrames[SelFrames[tk] * MycRom.fWidth * MycRom.fHeight + tj * MycRom.fWidth + ti] =
+                        min(Draw_Grad_Ini, Draw_Grad_Fin) + (int)((rayon / vnorm) * range);
+                }
+            }
+        }
+    }
+}
+
 void EmptyExtraSurface(void)
 {
     memset(Draw_Extra_Surface, 0, 256 * 64);
@@ -3267,7 +3301,7 @@ bool Save_cRom(bool autosave)
     for (UINT ti = 0; ti < MycRom.nFrames; ti++)
     {
         pactiveframes[ti] = 1;
-        if (MycRP.FrameDuration[ti] > SKIP_FRAME_DURATION) continue;
+        if (MycRP.FrameDuration[ti] >= SKIP_FRAME_DURATION) continue;
         if (ColorizedFrame(ti)) continue;
         pactiveframes[ti] = 0;
     }
@@ -3451,6 +3485,7 @@ bool Load_cRP(char* name)
     fread(&MycRP.preColSet, sizeof(UINT8), 1, pfile);
     fread(MycRP.nameColSet, sizeof(char), MAX_COL_SETS * 64, pfile);
     fread(&MycRP.DrawColMode, sizeof(UINT32), 1, pfile);
+    if (MycRP.DrawColMode == 2) MycRP.DrawColMode = 0;
     fread(&MycRP.Draw_Mode, sizeof(UINT8), 1, pfile);
     fread(&MycRP.Mask_Sel_Mode, sizeof(int), 1, pfile);
     fread(&MycRP.Fill_Mode, sizeof(BOOL), 1, pfile);
@@ -5177,9 +5212,9 @@ void EnableDrawButtons(void)
 void DisableDrawButtons(void)
 {
     EnableWindow(GetDlgItem(hwTB, IDC_DRAWPOINT), FALSE);
-    EnableWindow(GetDlgItem(hwTB, IDC_DRAWLINE), FALSE);
+    //EnableWindow(GetDlgItem(hwTB, IDC_DRAWLINE), FALSE);
     EnableWindow(GetDlgItem(hwTB, IDC_DRAWRECT), FALSE);
-    EnableWindow(GetDlgItem(hwTB, IDC_DRAWCIRC), FALSE);
+    //EnableWindow(GetDlgItem(hwTB, IDC_DRAWCIRC), FALSE);
     EnableWindow(GetDlgItem(hwTB, IDC_FILL), FALSE);
 }
 
@@ -5605,7 +5640,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 case IDC_GRADMODE:
                 {
                     MycRP.DrawColMode = 2;
-                    MycRP.Draw_Mode = 1;
+                    if ((MycRP.Draw_Mode != 1) && (MycRP.Draw_Mode != 3)) MycRP.Draw_Mode = 1;
                     InvalidateRect(hwTB, NULL, TRUE);
                     DisableDrawButtons();
                     return TRUE;
@@ -5616,7 +5651,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                     SendMessage(GetDlgItem(hDlg, IDC_4COLMODE), BM_SETCHECK, FALSE, 0);
                     SendMessage(GetDlgItem(hDlg, IDC_1COLMODE), BM_SETCHECK, FALSE, 0);
                     SendMessage(GetDlgItem(hDlg, IDC_GRADMODE), BM_SETCHECK, TRUE, 0);
-                    MycRP.Draw_Mode = 1;
+                    if ((MycRP.Draw_Mode!=1)&&(MycRP.Draw_Mode != 3)) MycRP.Draw_Mode = 1;
                     InvalidateRect(hwTB, NULL, TRUE);
                     DisableDrawButtons();
                     return TRUE;
@@ -6566,7 +6601,8 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 }
 
 bool isSReleased = false, isEnterReleased = false, isZReleased = false, isYReleased = false, isMReleased = false, isAReleased = false, isCReleased = false, isVReleased = false, isFReleased = false, isDReleased = false, isEReleased = false;
-
+bool is4Released = false, is6Released = false, is2Released = false, is8Released = false;
+DWORD NumPadNextTime = 0;
 void CheckAccelerators(void)
 {
     if (!(GetKeyState('S') & 0x8000)) isSReleased = true;
@@ -6579,11 +6615,62 @@ void CheckAccelerators(void)
     if (!(GetKeyState('D') & 0x8000)) isDReleased = true;
     if (!(GetKeyState('E') & 0x8000)) isEReleased = true;
     if (!(GetKeyState('V') & 0x8000)) isVReleased = true;
+    if (!(GetKeyState(VK_NUMPAD2) & 0x8000)) is2Released = true;
+    if (!(GetKeyState(VK_NUMPAD4) & 0x8000)) is4Released = true;
+    if (!(GetKeyState(VK_NUMPAD6) & 0x8000)) is6Released = true;
+    if (!(GetKeyState(VK_NUMPAD8) & 0x8000)) is8Released = true;
     if (!(GetKeyState(VK_RETURN) & 0x8000)) isEnterReleased = true;
     if (GetForegroundWindow() == hWnd)
     {
         if (MycRom.name[0])
         {
+            if (Paste_Mode)
+            {
+                if (GetKeyState(VK_NUMPAD2) & 0x8000)
+                {
+                    DWORD newtime = timeGetTime();
+                    if (newtime >= NumPadNextTime)
+                    {
+                        if (is2Released) NumPadNextTime = newtime + 500;
+                        else NumPadNextTime = newtime + 50;
+                        is2Released = false;
+                        paste_offsety += 1;
+                    }
+                }
+                if (GetKeyState(VK_NUMPAD4) & 0x8000)
+                {
+                    DWORD newtime = timeGetTime();
+                    if (newtime >= NumPadNextTime)
+                    {
+                        if (is4Released) NumPadNextTime = newtime + 500;
+                        else NumPadNextTime = newtime + 50;
+                        is4Released = false;
+                        paste_offsetx -= 1;
+                    }
+                }
+                if (GetKeyState(VK_NUMPAD6) & 0x8000)
+                {
+                    DWORD newtime = timeGetTime();
+                    if (newtime >= NumPadNextTime)
+                    {
+                        if (is6Released) NumPadNextTime = newtime + 500;
+                        else NumPadNextTime = newtime + 50;
+                        is6Released = false;
+                        paste_offsetx += 1;
+                    }
+                }
+                if (GetKeyState(VK_NUMPAD8) & 0x8000)
+                {
+                    DWORD newtime = timeGetTime();
+                    if (newtime >= NumPadNextTime)
+                    {
+                        if (is8Released) NumPadNextTime = newtime + 500;
+                        else NumPadNextTime = newtime + 50;
+                        is8Released = false;
+                        paste_offsety -= 1;
+                    }
+                }
+            }
             if ((GetKeyState(VK_CONTROL) & 0x8000) && (!Paste_Mode) && (!Color_Pipette))
             {
                 if ((isSReleased) && (GetKeyState('S') & 0x8000))
@@ -7131,7 +7218,11 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                 if ((button == GLFW_MOUSE_BUTTON_LEFT) && (Mouse_Mode == 4))
                 {
                     SaveAction(true, SA_DRAW);
-                    if (MycRP.DrawColMode == 2) ConvertCopyToGradient(MouseIniPosx, MouseIniPosy, MouseFinPosx, MouseFinPosy);
+                    if (MycRP.DrawColMode == 2)
+                    {
+                        if (MycRP.Draw_Mode==1) ConvertCopyToGradient(MouseIniPosx, MouseIniPosy, MouseFinPosx, MouseFinPosy);
+                        else ConvertCopyToRadialGradient(MouseIniPosx, MouseIniPosy, MouseFinPosx, MouseFinPosy);
+                    }
                     else ConvertSurfaceToFrame(Draw_Extra_Surface, isDel_Mode);
                     UpdateFSneeded = true;
                 }
