@@ -5888,8 +5888,14 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 {
                     if (MycRom.name[0] == 0) return TRUE;
                     SaveAction(true, SA_SHAPEMODE);
-                    if (SendMessage(GetDlgItem(hwTB, IDC_SHAPEMODE), BM_GETCHECK, 0, 0) == BST_CHECKED) MycRom.ShapeCompMode[acFrame] = TRUE;
-                    else MycRom.ShapeCompMode[acFrame] = FALSE;
+                    if (SendMessage(GetDlgItem(hwTB, IDC_SHAPEMODE), BM_GETCHECK, 0, 0) == BST_CHECKED)
+                    {
+                        for (unsigned int ti = 0; ti < nSelFrames; ti++) MycRom.ShapeCompMode[SelFrames[ti]] = TRUE;
+                    }
+                    else
+                    {
+                        for (unsigned int ti = 0; ti < nSelFrames; ti++) MycRom.ShapeCompMode[SelFrames[ti]] = FALSE;
+                    }
                     CheckSameFrames();
                     return TRUE;
                 }
