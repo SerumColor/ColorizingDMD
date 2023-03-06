@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>16.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{ec913677-8316-485a-bc5b-c26caea1bdc2}</ProjectGuid>
+    <RootNamespace>ColorizingDMD</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <IncludePath>E:\Mes documents\C++\includes;$(IncludePath)</IncludePath>
+    <LibraryPath>E:\Mes documents\C++\libs win32;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <IncludePath>E:\Mes documents\C++\includes;$(IncludePath)</IncludePath>
+    <LibraryPath>E:\Mes documents\C++\libs win32;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <IncludePath>E:\Mes documents\C++\includes;$(IncludePath)</IncludePath>
+    <LibraryPath>E:\Mes documents\C++\libs x64;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <IncludePath>E:\Mes documents\C++\includes;$(IncludePath)</IncludePath>
+    <LibraryPath>E:\Mes documents\C++\libs x64;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);gdiplus.lib;Comctl32.lib;Shlwapi.lib; Winmm.lib;opengl32.lib;glfw3.lib;glew32.lib;LiteZip.lib;</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);gdiplus.lib;Comctl32.lib;Shlwapi.lib; Winmm.lib;opengl32.lib;glfw3.lib;glew32.lib;LiteZip.lib</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);gdiplus.lib;Comctl32.lib;Shlwapi.lib; Winmm.lib;opengl32.lib;glfw3.lib;glew32.lib;LiteZip.lib;</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);gdiplus.lib;Comctl32.lib;Shlwapi.lib; Winmm.lib;opengl32.lib;glfw3.lib;glew32.lib;LiteZip.lib</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="ColorizingDMD.h" />
+    <ClInclude Include="cRom.h" />
+    <ClInclude Include="framework.h" />
+    <ClInclude Include="OGL_Immediate_2D.h" />
+    <ClInclude Include="Resource.h" />
+    <ClInclude Include="targetver.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="ColorizingDMD.cpp" />
+    <ClCompile Include="OGL_Immediate_2D.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="ColorizingDMD.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="..\..\OneDrive\C++\ColorizingDMD\icons\deldetspr.ico" />
+    <Image Include="ColorizingDMD.ico" />
+    <Image Include="cRom256.ico" />
+    <Image Include="icons\4colcopy.ico" />
+    <Image Include="icons\64colcopy.ico" />
+    <Image Include="icons\add.ico" />
+    <Image Include="icons\addspr.ico" />
+    <Image Include="icons\addsprfr.ico" />
+    <Image Include="icons\addtab.ico" />
+    <Image Include="icons\cercle.ico" />
+    <Image Include="icons\colorizedmode.ico" />
+    <Image Include="icons\colpick.ico" />
+    <Image Include="icons\ColSet.ico" />
+    <Image Include="icons\ColsToSel.ico" />
+    <Image Include="icons\coltodyna.ico" />
+    <Image Include="icons\copy.ico" />
+    <Image Include="icons\crayon.ico" />
+    <Image Include="icons\delallsamefr.ico" />
+    <Image Include="icons\deldetspr.ico" />
+    <Image Include="icons\delframe.ico" />
+    <Image Include="icons\delsamefr.ico" />
+    <Image Include="icons\delselsamefr.ico" />
+    <Image Include="icons\delspr.ico" />
+    <Image Include="icons\deltab.ico" />
+    <Image Include="icons\fill.ico" />
+    <Image Include="icons\finddword.ico" />
+    <Image Include="icons\icon8.ico" />
+    <Image Include="icons\invertsel.ico" />
+    <Image Include="icons\mask+.ico" />
+    <Image Include="icons\mask-.ico" />
+    <Image Include="icons\MoveSection.ico" />
+    <Image Include="icons\new.ico" />
+    <Image Include="icons\openproj.ico" />
+    <Image Include="icons\originalmode.ico" />
+    <Image Include="icons\paste.ico" />
+    <Image Include="icons\point.ico" />
+    <Image Include="icons\rectangle.ico" />
+    <Image Include="icons\redo.ico" />
+    <Image Include="icons\s2.ico" />
+    <Image Include="icons\saveproj.ico" />
+    <Image Include="icons\search.ico" />
+    <Image Include="icons\selall.ico" />
+    <Image Include="icons\selmask.ico" />
+    <Image Include="icons\selmovmask.ico" />
+    <Image Include="icons\selsamefr.ico" />
+    <Image Include="icons\SpotOff.ico" />
+    <Image Include="icons\SpotOn.ico" />
+    <Image Include="icons\sprtoframe.ico" />
+    <Image Include="icons\trait.ico" />
+    <Image Include="icons\trialpha.ico" />
+    <Image Include="icons\undo.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="formats.txt" />
+    <Text Include="manual.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="cursor1.cur" />
+    <None Include="icons\colpick.cur" />
+    <None Include="icons\cursor1.cur" />
+    <None Include="icons\cursor2.cur" />
+    <None Include="icons\magicwand.cur" />
+    <None Include="NODROP.cur" />
+    <None Include="paste.cur" />
+    <None Include="POINTER.cur" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
