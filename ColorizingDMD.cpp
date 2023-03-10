@@ -4084,16 +4084,17 @@ void Load_TXT_File(void)
             SetCurrentDirectoryA(acDir);
             return;
         }
-        strcpy_s(MycRom.name, 64, ofn.lpstrFile);
+        char tpath[MAX_PATH];
+        strcpy_s(tpath, MAX_PATH, ofn.lpstrFile);
         unsigned int ti = 0;
-        size_t tj = strlen(MycRom.name) - 1;
-        while ((MycRom.name[tj] != '\\') && (MycRom.name[tj] != ':') && (tj > 0)) tj--;
+        size_t tj = strlen(tpath) - 1;
+        while ((tpath[tj] != '\\') && (tpath[tj] != ':') && (tj > 0)) tj--;
         if (tj > 0)
         {
             tj++;
-            while (MycRom.name[tj] != '.')
+            while (tpath[tj] != '.')
             {
-                MycRom.name[ti] = MycRom.name[tj];
+                MycRom.name[ti] = tpath[tj];
                 ti++;
                 tj++;
             }
