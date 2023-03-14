@@ -183,6 +183,9 @@ sColRot MyColRot; // color rotation structure
 
 bool Ident_Pushed = false;
 
+bool filter_time = false, filter_allmask = false, filter_onemask = false, filter_color = false;
+int filter_length = 15, filter_mask = 0, filter_ncolor = 16;
+
 #pragma endregion Global_Variables
 
 #pragma region Undo_Tools
@@ -1142,6 +1145,27 @@ uint32_t crc32_fast(const UINT8* s, size_t n, BOOL ShapeMode) // computing a buf
     return ~crc;
 }
 
+uint32_t crc32_fast_count(const UINT8* s, size_t n, BOOL ShapeMode, UINT8* pncols) // computing a buffer CRC32, "build_crc32_table()" must have been called before the first use
+// this version counts the number of different values found in the buffer
+{
+    *pncols = 0;
+    bool usedcolors[256];
+    memset(usedcolors, false, 256);
+    uint32_t crc = 0xFFFFFFFF;
+    for (size_t i = 0; i < n; i++)
+    {
+        UINT8 val = s[i];
+        if (!usedcolors[val])
+        {
+            usedcolors[val] = true;
+            (*pncols)++;
+        }
+        if ((ShapeMode == TRUE) && (val > 1)) val = 1;
+        crc = (crc >> 8) ^ crc32_table[(val ^ crc) & 0xFF];
+    }
+    return ~crc;
+}
+
 uint32_t crc32_fast_mask(const UINT8* source, const UINT8* mask, size_t n, BOOL ShapeMode) // computing a buffer CRC32 on the non-masked area, "build_crc32_table()" must have been called before the first use
 // take into account if we are in shape mode
 {
@@ -1611,8 +1635,9 @@ void Draw_Fill_Rectangle_Text(GLFWwindow* glfwin, int ix, int iy, int fx, int fy
     glDisable(GL_TEXTURE_2D);
 }
 
-void Display_Avancement(float avancement)
+void Display_Avancement(float avanct, int step, int nsteps)
 {
+    float avancement = (step + avanct) / nsteps;
     Draw_Fill_Rectangle_Text(glfwframe, 0, 0, (int)(ScrW * avancement), ScrH, TxcRom, 0, avancement, 0, 2.15f);
     gl33_SwapBuffers(glfwframe, false);
 }
@@ -3618,29 +3643,54 @@ bool Parse_TXT(char* TXTF_name, char* TXTF_buffer, size_t TXTF_buffer_len, sFram
 
 void CompareFrames(UINT nFrames, sFrames* pFrames)
 {
-    //HWND hDlg = Display_Wait("Wait please...");
+    // We have a block of sFrames with pointers to frames decoded ('a'->10, '1'->1, etc..., and with no CR and LF), active is set to TRUE and
+    // the timecode is the value from the TXT file
+    // we need to filter the frames according what has been checked in the IID_FILTERS dialog and to change the value of timecode so that this is the
+    // time span the frame has been displayed
+
     UINT nfremoved = 0;
-    // Compare all the frames of a txt file (ignoring masks) to remove copy frames
-    unsigned int nfkilled = 0;
+    for (int ti = 0; ti < (int)nFrames; ti++)
+    {
+        if (!(ti % 200)) Display_Avancement((float)ti / (float)(nFrames - 1), 0, 2);
+        if (ti < (int)nFrames - 1)
+        {
+            UINT32 nextfrlen = pFrames[ti + 1].timecode;
+            UINT32 acfrlen = pFrames[ti].timecode;
+            if (nextfrlen < acfrlen) pFrames[ti].timecode = DEFAULT_FRAME_DURATION;
+            else if (nextfrlen > acfrlen + MAX_FRAME_DURATION) pFrames[ti].timecode = DEFAULT_FRAME_DURATION;
+            else
+            {
+                pFrames[ti].timecode = nextfrlen - acfrlen;
+                if (filter_time && (pFrames[ti].timecode < (UINT32)filter_length) && pFrames[ti].active)
+                {
+                    nfremoved++;
+                    pFrames[ti].active = FALSE;
+                    continue;
+                }
+            }
+        }
+        else pFrames[ti].timecode = DEFAULT_FRAME_DURATION;
+        // we check the number of colors in each frame if needed and do the no-mask-hash calculations at the same time
+        UINT8 ncols;
+        pFrames[ti].hashcode = crc32_fast_count((UINT8*)pFrames[ti].ptr, MycRom.fWidth * MycRom.fHeight, FALSE, &ncols);
+        if (filter_color && (filter_ncolor < ncols) && pFrames[ti].active)
+        {
+            nfremoved++;
+            pFrames[ti].active = FALSE;
+            continue;
+        }
+    }
     if (nFrames < 2) return;
     for (int ti = 0; ti < (int)nFrames - 1; ti++)
     {
+        if (!(ti%200)) Display_Avancement((float)ti / (float)(nFrames - 1), 1, 2);
         if (pFrames[ti].active == FALSE) continue;
-        Display_Avancement((float)ti / (float)(nFrames - 1));
         for (int tj = ti + 1; tj < (int)nFrames; tj++)
         {
-            if (pFrames[tj].active == FALSE) continue;
-            char* sec_ptr = pFrames[tj].ptr;
-            char* pre_ptr = pFrames[ti].ptr;
-            UINT tk;
-            for (tk = 0; tk < MycRom.fWidth * MycRom.fHeight; tk++)
+            if (pFrames[ti].hashcode == pFrames[tj].hashcode)
             {
-                if (sec_ptr[tk] != pre_ptr[tk]) break;
-            }
-            if (tk == MycRom.fWidth * MycRom.fHeight)
-            {
+                if (pFrames[tj].active) nfremoved++;
                 pFrames[tj].active = FALSE;
-                nfremoved++;
             }
         }
     }
@@ -3653,38 +3703,75 @@ void CompareAdditionalFrames(UINT nFrames, sFrames* pFrames)
     // Compare the new frames of a txt file to the previous and new ones to remove copy frames
     //unsigned int nfkilled = 0;
     UINT nfremoved = 0;
+    int nstep = 3;
+    //if (filter_allmask || filter_onemask) nstep++;
     // first compare the new frames between them
-    for (unsigned int ti = 0; ti < nFrames - 1; ti++)
+    for (int ti = 0; ti < (int)nFrames; ti++)
     {
+        if (!(ti % 200)) Display_Avancement((float)ti / (float)(nFrames - 1), 0, nstep);
+        if (ti < (int)nFrames - 1)
+        {
+            UINT32 nextfrlen = pFrames[ti + 1].timecode;
+            UINT32 acfrlen = pFrames[ti].timecode;
+            if (nextfrlen < acfrlen) pFrames[ti].timecode = DEFAULT_FRAME_DURATION;
+            else if (nextfrlen > acfrlen + MAX_FRAME_DURATION) pFrames[ti].timecode = DEFAULT_FRAME_DURATION;
+            else
+            {
+                pFrames[ti].timecode = nextfrlen - acfrlen;
+                if (filter_time && (pFrames[ti].timecode < (UINT32)filter_length) && pFrames[ti].active)
+                {
+                    nfremoved++;
+                    pFrames[ti].active = FALSE;
+                    continue;
+                }
+            }
+        }
+        else pFrames[ti].timecode = DEFAULT_FRAME_DURATION;
+        // we check the number of colors in each frame if needed and do the no-mask-hash calculations at the same time
+        UINT8 ncols;
+        pFrames[ti].hashcode = crc32_fast_count((UINT8*)pFrames[ti].ptr, MycRom.fWidth * MycRom.fHeight, FALSE, &ncols);
+        if (filter_color && (filter_ncolor < ncols) && pFrames[ti].active)
+        {
+            nfremoved++;
+            pFrames[ti].active = FALSE;
+            continue;
+        }
+    }
+    if (nFrames < 2) return;
+    for (int ti = 0; ti < (int)nFrames - 1; ti++)
+    {
+        if (!(ti % 200)) Display_Avancement((float)ti / (float)(nFrames - 1), 1, nstep);
         if (pFrames[ti].active == FALSE) continue;
-        Display_Avancement((float)ti / (float)(nFrames - 1));
-        //on compare 2 frames ici
         for (int tj = ti + 1; tj < (int)nFrames; tj++)
         {
-            if (pFrames[tj].active == FALSE) continue;
-            char* sec_ptr = pFrames[tj].ptr;
-            char* pre_ptr = pFrames[ti].ptr;
-            UINT tk;
-            for (tk = 0; tk < MycRom.fWidth * MycRom.fHeight; tk++)
+            if (pFrames[ti].hashcode == pFrames[tj].hashcode)
             {
-                if (sec_ptr[tk] != pre_ptr[tk]) break;
-            }
-            if (tk == MycRom.fWidth * MycRom.fHeight)
-            {
+                if (pFrames[tj].active) nfremoved++;
                 pFrames[tj].active = FALSE;
-                nfremoved++;
             }
         }
     }
     // then compare the new frames with the previous ones
+
     for (unsigned int ti = 0; ti < nFrames; ti++)
     {
-        Display_Avancement((float)ti / (float)(nFrames - 1));
+        if (!(ti % 200)) Display_Avancement((float)ti / (float)(nFrames - 1),1,2);
         //on compare 2 frames ici
         for (int tj = 0; tj < (int)MycRom.nFrames; tj++)
         {
             if (pFrames[ti].active == FALSE) continue;
-            UINT8* sec_ptr = &MycRP.oFrames[tj * MycRom.fWidth * MycRom.fHeight];
+            if ((MycRom.CompMaskID[tj] == filter_mask) && filter_onemask)
+            {
+            }
+            else if ((MycRom.CompMaskID[tj] != 255) && filter_allmask)
+            {
+
+            }
+            else
+            {
+
+            }
+            /*UINT8* sec_ptr = &MycRP.oFrames[tj * MycRom.fWidth * MycRom.fHeight];
             char* pre_ptr = pFrames[ti].ptr;
             UINT tk;
             for (tk = 0; tk < MycRom.fWidth * MycRom.fHeight; tk++)
@@ -3695,11 +3782,10 @@ void CompareAdditionalFrames(UINT nFrames, sFrames* pFrames)
             {
                 pFrames[ti].active = FALSE;
                 nfremoved++;
-            }
+            }*/
         }
-    }
+    }*/
     cprintf("%i frames removed as duplicate, %i added", nfremoved, nFrames - nfremoved);
-    //DestroyWindow(hDlg);
 }
 
 bool CopyTXTFrames2Frame(UINT nFrames, sFrames* pFrames)
@@ -3839,18 +3925,20 @@ bool CopyTXTFrames2Frame(UINT nFrames, sFrames* pFrames)
     {
         if (pFrames[tk].active == TRUE)
         {
+            MycRP.FrameDuration[MycRom.nFrames] = pFrames[tk].timecode;
             char* psFr = pFrames[tk].ptr;
             UINT8* pdoFr = &MycRP.oFrames[MycRom.fWidth * MycRom.fHeight * MycRom.nFrames];
             UINT8* pdcFr = &MycRom.cFrames[MycRom.fWidth * MycRom.fHeight * MycRom.nFrames];
-            if (tk < nFrames - 1)
+/*            if (tk < nFrames - 1)
             {
                 UINT32 time1 = pFrames[tk].timecode;
                 UINT32 time2 = pFrames[tk + 1].timecode;
                 if (time2 < time1) MycRP.FrameDuration[MycRom.nFrames] = 0;
                 else if (time2 - time1 > 30000) MycRP.FrameDuration[MycRom.nFrames] = 0;
                 else MycRP.FrameDuration[MycRom.nFrames] = time2 - time1;
+                if (filter_time && (filter_length > MycRP.FrameDuration[MycRom.nFrames])) pFrames[tk].active = FALSE;
             }
-            else MycRP.FrameDuration[MycRom.nFrames] = 0;
+            else MycRP.FrameDuration[MycRom.nFrames] = 0;*/
             Init_cFrame_Palette(&MycRom.cPal[sizepalette * MycRom.nFrames]);
             for (unsigned int tj = 0; tj < MycRom.fHeight* MycRom.fWidth; tj++)
             {
@@ -3986,10 +4074,11 @@ bool AddTXTFrames2Frame(UINT nFrames, sFrames* pFrames)
     {
         if (pFrames[tk].active == TRUE)
         {
+            MycRP.FrameDuration[MycRom.nFrames]= pFrames[tk].timecode;
             UINT8* psFr = (UINT8*)pFrames[tk].ptr;
             UINT8* pdoFr = &MycRP.oFrames[MycRom.fWidth * MycRom.fHeight * MycRom.nFrames];
             UINT8* pdcFr = &MycRom.cFrames[MycRom.fWidth * MycRom.fHeight * MycRom.nFrames];
-            if (tk < nFrames - 1)
+/*            if (tk < nFrames - 1)
             {
                 UINT32 time1 = pFrames[tk].timecode;
                 UINT32 time2 = pFrames[tk + 1].timecode;
@@ -3997,7 +4086,7 @@ bool AddTXTFrames2Frame(UINT nFrames, sFrames* pFrames)
                 else if (time2 - time1 > 30000) MycRP.FrameDuration[MycRom.nFrames] = 0;
                 else MycRP.FrameDuration[MycRom.nFrames] = time2 - time1;
             }
-            else MycRP.FrameDuration[MycRom.nFrames] = 0;
+            else MycRP.FrameDuration[MycRom.nFrames] = 0;*/
             Init_cFrame_Palette(&MycRom.cPal[sizepalette * MycRom.nFrames]);
             for (unsigned int tj = 0; tj < MycRom.fHeight * MycRom.fWidth; tj++)
             {
@@ -4063,6 +4152,11 @@ void Load_TXT_File(void)
             SetCurrentDirectoryA(acDir);
             return;
         }
+        if (DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_FILTERS), hWnd, Filter_Proc, (LPARAM)1) == -1)
+        {
+            fclose(pfile);
+            return;
+        }
         fseek(pfile, 0, SEEK_END);
         TXTF_buffer_len = (size_t)ftell(pfile);
         rewind(pfile);
@@ -4115,6 +4209,178 @@ void Load_TXT_File(void)
     SetCurrentDirectoryA(acDir);
 }
 
+LRESULT CALLBACK Filter_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
+{
+    switch (Msg)
+    {
+    case WM_INITDIALOG:
+    {
+        SendMessage(GetDlgItem(hwDlg, IDC_DELTIME), BM_SETCHECK, BST_UNCHECKED, 0);
+        SendMessage(GetDlgItem(hwDlg, IDC_DELMASK), BM_SETCHECK, BST_UNCHECKED, 0);
+        SendMessage(GetDlgItem(hwDlg, IDC_ALLMASKS), BM_SETCHECK, BST_CHECKED, 0);
+        SendMessage(GetDlgItem(hwDlg, IDC_DELCOL), BM_SETCHECK, BST_UNCHECKED, 0);
+        EnableWindow(GetDlgItem(hwDlg, IDC_TIMELEN), FALSE);
+        EnableWindow(GetDlgItem(hwDlg, IDC_MASKLIST), FALSE);
+        EnableWindow(GetDlgItem(hwDlg, IDC_NCOL), FALSE);
+        EnableWindow(GetDlgItem(hwDlg, IDC_ALLMASKS), FALSE);
+        EnableWindow(GetDlgItem(hwDlg, IDC_ONEMASK), FALSE);
+        if (lParam==0) EnableWindow(GetDlgItem(hwDlg, IDC_DELMASK), TRUE); else EnableWindow(GetDlgItem(hwDlg, IDC_DELMASK), FALSE);
+        HWND hlst = GetDlgItem(hwDlg, IDC_MASKLIST);
+        SendMessage(hlst, CB_RESETCONTENT, 0, 0);
+        wchar_t tbuf[256], tname[SIZE_MASK_NAME];
+        size_t tout;
+        for (UINT32 ti = 0; ti < MAX_MASKS; ti++)
+        {
+            if (MaskUsed(ti))
+            {
+                if (MycRP.Mask_Names[ti * SIZE_MASK_NAME] != 0)
+                    mbstowcs_s(&tout, tname, &MycRP.Mask_Names[ti * SIZE_MASK_NAME], SIZE_MASK_NAME - 1);
+                else
+                    _itow_s(ti, tname, SIZE_MASK_NAME - 1, 10);
+                swprintf_s(tbuf, 256, L"\u2611 %s", tname);
+            }
+            else
+                swprintf_s(tbuf, 256, L"\u2610 %i", ti);
+            SendMessage(hlst, CB_ADDSTRING, 0, (LPARAM)tbuf);
+        }
+        SendMessage(hlst, CB_SETCURSEL, 0, 0);
+    }
+    case WM_COMMAND:
+    {
+        switch (wParam)
+        {
+        case IDC_DELTIME:
+        {
+            if (Button_GetCheck(GetDlgItem(hwDlg, IDC_DELTIME)) == 0) EnableWindow(GetDlgItem(hwDlg, IDC_TIMELEN), FALSE);
+            else EnableWindow(GetDlgItem(hwDlg, IDC_TIMELEN), TRUE);
+            return TRUE;
+        }
+        case IDC_DELMASK:
+        {
+            if (Button_GetCheck(GetDlgItem(hwDlg, IDC_DELMASK)) == 0)
+            {
+                EnableWindow(GetDlgItem(hwDlg, IDC_ALLMASKS), FALSE);
+                EnableWindow(GetDlgItem(hwDlg, IDC_ONEMASK), FALSE);
+                EnableWindow(GetDlgItem(hwDlg, IDC_MASKLIST), FALSE);
+            }
+            else
+            {
+                EnableWindow(GetDlgItem(hwDlg, IDC_ALLMASKS), TRUE);
+                EnableWindow(GetDlgItem(hwDlg, IDC_ONEMASK), TRUE);
+                if (Button_GetCheck(GetDlgItem(hwDlg, IDC_ONEMASK)) != 0) EnableWindow(GetDlgItem(hwDlg, IDC_MASKLIST), TRUE);
+            }
+            return TRUE;
+        }
+        case IDC_ONEMASK:
+        {
+            if (Button_GetCheck(GetDlgItem(hwDlg, IDC_ONEMASK)) != 0) EnableWindow(GetDlgItem(hwDlg, IDC_MASKLIST), TRUE);
+            else EnableWindow(GetDlgItem(hwDlg, IDC_MASKLIST), FALSE);
+            return TRUE;
+        }
+        case IDC_ALLMASKS:
+        {
+            if (Button_GetCheck(GetDlgItem(hwDlg, IDC_ONEMASK)) != 0) EnableWindow(GetDlgItem(hwDlg, IDC_MASKLIST), TRUE);
+            else EnableWindow(GetDlgItem(hwDlg, IDC_MASKLIST), FALSE);
+            return TRUE;
+        }
+        case IDC_DELCOL:
+        {
+            if (Button_GetCheck(GetDlgItem(hwDlg, IDC_DELCOL)) == 0) EnableWindow(GetDlgItem(hwDlg, IDC_NCOL), FALSE);
+            else EnableWindow(GetDlgItem(hwDlg, IDC_NCOL), TRUE);
+            return TRUE;
+        }
+        case IDOK:
+        {
+            bool istimemod = false;
+            bool iscolmod = false;
+            if (Button_GetCheck(GetDlgItem(hwDlg, IDC_DELTIME)) != 0)
+            {
+                char tbuf[256];
+                filter_time = true;
+                GetWindowTextA(GetDlgItem(hwDlg, IDC_TIMELEN), tbuf, 256);
+                filter_length = atoi(tbuf);
+                if (filter_length < 5)
+                {
+                    filter_length = 5;
+                    _itoa_s(filter_length, tbuf, 256, 10);
+                    SetWindowTextA(GetDlgItem(hwDlg, IDC_TIMELEN), tbuf);
+                    istimemod = true;
+                }
+                else if (filter_length > 3000)
+                {
+                    filter_length = 3000;
+                    _itoa_s(filter_length, tbuf, 256, 10);
+                    SetWindowTextA(GetDlgItem(hwDlg, IDC_TIMELEN), tbuf);
+                    istimemod = true;
+                }
+            }
+            else filter_time = false;
+            if (Button_GetCheck(GetDlgItem(hwDlg, IDC_DELCOL)) != 0)
+            {
+                char tbuf[256];
+                filter_color = true;
+                GetWindowTextA(GetDlgItem(hwDlg, IDC_NCOL), tbuf, 256);
+                filter_ncolor = atoi(tbuf);
+                if (filter_ncolor < 1)
+                {
+                    filter_ncolor = 1;
+                    _itoa_s(filter_ncolor, tbuf, 256, 10);
+                    SetWindowTextA(GetDlgItem(hwDlg, IDC_NCOL), tbuf);
+                    iscolmod = true;
+                }
+                else if (filter_ncolor > (int)MycRom.noColors)
+                {
+                    filter_ncolor = (int)MycRom.noColors;
+                    _itoa_s(filter_ncolor, tbuf, 256, 10);
+                    SetWindowTextA(GetDlgItem(hwDlg, IDC_NCOL), tbuf);
+                    iscolmod = true;
+                }
+            }
+            else filter_color = false;
+            if (Button_GetCheck(GetDlgItem(hwDlg, IDC_DELMASK)) != 0)
+            {
+                if (Button_GetCheck(GetDlgItem(hwDlg, IDC_ONEMASK)) != 0)
+                {
+                    filter_onemask = true;
+                    filter_allmask = false;
+                    filter_mask = (int)SendMessage(GetDlgItem(hwDlg, IDC_MASKLIST), CB_GETCURSEL, 0, 0);
+                }
+                else
+                {
+                    filter_onemask = false;
+                    filter_allmask = true;
+                }
+            }
+            else filter_mask = false;
+            if (istimemod && iscolmod)
+            {
+                MessageBoxA(hWnd, "The time length and number of colors values have been automatically changed, check them and confirm again", "Confirm", MB_OK);
+                return TRUE;
+            }
+            else if (istimemod)
+            {
+                MessageBoxA(hWnd, "The time length value has been automatically changed, check it and confirm again", "Confirm", MB_OK);
+                return TRUE;
+            }
+            else if (iscolmod)
+            {
+                MessageBoxA(hWnd, "The number of colors value has been automatically changed, check it and confirm again", "Confirm", MB_OK);
+                return TRUE;
+            }
+            EndDialog(hwDlg, 0);
+            return TRUE;
+        }
+        case IDCANCEL:
+        {
+            EndDialog(hwDlg, -1);
+            return TRUE;
+        }
+        }
+    }
+    }
+    return FALSE;
+}
+
 void Add_TXT_File(void)
 {
     char acDir[260];
@@ -4150,6 +4416,11 @@ void Add_TXT_File(void)
         {
             cprintf("Unable to open the file %s", ofn.lpstrFile);
             SetCurrentDirectoryA(acDir);
+            return;
+        }
+        if (DialogBox(hInst, MAKEINTRESOURCE(IDD_FILTERS), hWnd, Filter_Proc,(LPARAM)0) == -1)
+        {
+            fclose(pfile);
             return;
         }
         fseek(pfile, 0, SEEK_END);
@@ -5822,7 +6093,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                         int inisfr = nSameFrames;
                         while (nSameFrames > 0)
                         {
-                            Display_Avancement((float)(inisfr - nSameFrames) / (float)nSameFrames);
+                            Display_Avancement((float)(inisfr - nSameFrames) / (float)nSameFrames,0,1);
                             Delete_Frame(SameFrames[0]);
                         }
                         UpdateSectionList();
@@ -5842,7 +6113,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                             acFrame = SelFrames[ti];
                             CheckSameFrames();
                             int inisfr = nSameFrames;
-                            Display_Avancement((float)ti / (float)nSelFrames);
+                            Display_Avancement((float)ti / (float)nSelFrames,0,1);
                             while (nSameFrames > 0)
                             {
                                 Delete_Frame(SameFrames[0]);
@@ -5877,7 +6148,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                         {
                             CheckSameFrames();
                             int inisfr = nSameFrames;
-                            Display_Avancement((float)acFrame / (float)MycRom.nFrames);
+                            Display_Avancement((float)acFrame / (float)MycRom.nFrames,0,1);
                             while (nSameFrames > 0)
                             {
                                 Delete_Frame(SameFrames[0]);
@@ -5909,7 +6180,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                         int inisfr = nSelFrames;
                         while (nSelFrames > 0)
                         {
-                            Display_Avancement((float)(inisfr - nSelFrames) / (float)nSelFrames);
+                            Display_Avancement((float)(inisfr - nSelFrames) / (float)nSelFrames,0,1);
                             Delete_Frame(SelFrames[0]);
                         }
                         UpdateSectionList();
@@ -7982,9 +8253,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         cprintf("Can't initialize GDI+");
         return -1;
     }
-
-    //if (!CreateToolWindows()) return FALSE;
+    // create console and disable the close button
     AllocConsole();
+    HWND thdl = GetConsoleWindow();
+    HMENU thmen= GetSystemMenu(thdl, FALSE);
+    DeleteMenu(thmen, SC_CLOSE, MF_BYCOMMAND);
     hStdout = GetStdHandle(STD_OUTPUT_HANDLE);
     cprintf("ColorizingDMD started");
     WNDCLASSEXW wcex;
