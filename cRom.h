@@ -73,9 +73,11 @@ enum
 #define MAX_SPRITES_PER_FRAME 32 // maximum amount of sprites to look for per frame
 #define MAX_SPRITE_SIZE 128 // maximum size of the sprites
 #define MAX_SPRITE_SIZE2 64 // maximum size of the sprites
-#define SKIP_FRAME_DURATION 17 // skip the frames that are shorter than SKIP_FRAME_DURATION ms
+#define SKIP_FRAME_DURATION 15 // skip the frames that are shorter than SKIP_FRAME_DURATION ms
 #define MAX_COLOR_ROTATION 8 // maximum number of color rotations per frame
 #define MAX_SPRITE_DETECT_AREAS 4 // maximum number of areas to detect the sprite
+#define DEFAULT_FRAME_DURATION 30 // if a frame duration can not be calculated set this value as default
+#define MAX_FRAME_DURATION 4000 // maximum frame duration
 
 typedef struct
 {
@@ -145,6 +147,7 @@ typedef struct {
 	BOOL active; // deactivated if similar to a previous one
 	char* ptr; // pointer to the first color index of the frame inside the TXT file
 	UINT32 timecode; // time code of the frame
+	UINT32 hashcode; // hashcode
 } sFrames;
 
 typedef struct {
