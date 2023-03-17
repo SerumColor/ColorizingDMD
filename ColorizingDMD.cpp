@@ -7416,7 +7416,18 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                         }
                         else
                         {
-
+                            // we colors all the pixels with the same color as the one clicked
+                            SaveAction(true, SA_DRAW);
+                            Mouse_Mode = 3;
+                            UINT8 col_to_find = MycRom.cFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ygrid * MycRom.fWidth + xgrid];
+                            for (UINT ti = 0; ti < MycRom.fWidth * MycRom.fHeight; ti++)
+                            {
+                                if (MycRom.cFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ti] == col_to_find)
+                                {
+                                    if (MycRP.DrawColMode == 1) MycRom.cFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ti] = acEditColors[MycRP.oFrames[acFrame * MycRom.fHeight * MycRom.fWidth + ti]];
+                                    else MycRom.cFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ti] = acEditColors[noColSel];
+                                }
+                            }
                         }
                         return;
                     }
