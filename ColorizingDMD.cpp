@@ -3418,6 +3418,7 @@ bool Load_cRom(char* name)
     fseek(pfile, MycRom.nFrames, SEEK_CUR); // we skip the active frame content
     memset(MycRom.ColorRotations, 255, 3 * MAX_COLOR_ROTATION * MycRom.nFrames);
     memset(MycRom.SpriteDetAreas, 255, sizeof(UINT16) * 4 * MAX_SPRITE_DETECT_AREAS * MycRom.nSprites);
+    memset(MycRom.TriggerID, 0xff, sizeof(UINT32) * MycRom.nFrames);
     if (lengthheader >= 9 * sizeof(UINT))
     {
         fread(MycRom.ColorRotations, 1, 3 * MAX_COLOR_ROTATION * MycRom.nFrames, pfile);
@@ -3430,7 +3431,7 @@ bool Load_cRom(char* name)
             {
                 fread(MycRom.TriggerID, sizeof(UINT32), MycRom.nFrames, pfile);
             }
-            else memset(MycRom.TriggerID, 0xff, sizeof(UINT32) * MycRom.nFrames);
+            memset(MycRom.TriggerID, 0xff, sizeof(UINT32) * MycRom.nFrames);
         }
     }
     fclose(pfile);
@@ -6456,6 +6457,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                     {
                         char tbuf[256];
                         GetWindowTextA((HWND)lParam, tbuf, 256);
+                        if (strcmp(tbuf, "- None -") == 0) return TRUE;
                         int tID = atoi(tbuf);
                         if (tID < 0)
                         {
@@ -7386,27 +7388,35 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                         return;
                     }
                     else
-                    { // we select all the pixels with the same color as the one clicked!
+                    { 
                         if (MycRom.DynaMasks[acFrame * MycRom.fWidth * MycRom.fHeight + ygrid * MycRom.fWidth + xgrid] != 255)
                         {
                             MessageBoxA(hWnd, "The pixel you clicked is dynamically colored, this function works only for static content.", "Improper use", MB_OK);
                             return;
                         }
-                        SaveAction(true, SA_COPYMASK);
-                        if (mods & GLFW_MOD_SHIFT) isDel_Mode = true;
-                        Mouse_Mode = 7;
-                        UINT8 col_to_find = MycRom.cFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ygrid * MycRom.fWidth + xgrid];
-                        for (UINT ti = 0; ti < MycRom.fWidth * MycRom.fHeight; ti++)
+                        if (mods & GLFW_MOD_CONTROL)
                         {
-                            if (MycRom.cFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ti] == col_to_find)
+                            // we select all the pixels with the same color as the one clicked!
+                            SaveAction(true, SA_COPYMASK);
+                            if (mods & GLFW_MOD_SHIFT) isDel_Mode = true;
+                            Mouse_Mode = 7;
+                            UINT8 col_to_find = MycRom.cFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ygrid * MycRom.fWidth + xgrid];
+                            for (UINT ti = 0; ti < MycRom.fWidth * MycRom.fHeight; ti++)
                             {
-                                if (MycRom.DynaMasks[acFrame * MycRom.fWidth * MycRom.fHeight + ti] != 255) continue;
-                                if (!isDel_Mode) Copy_Mask[ti] = 1;
-                                else Copy_Mask[ti] = 0;
-                                Copy_Col[ti] = MycRom.cFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ti];
-                                Copy_Colo[ti] = MycRP.oFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ti];
-                                Copy_Dyna[ti] = MycRom.DynaMasks[acFrame * MycRom.fWidth * MycRom.fHeight + ti];
+                                if (MycRom.cFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ti] == col_to_find)
+                                {
+                                    if (MycRom.DynaMasks[acFrame * MycRom.fWidth * MycRom.fHeight + ti] != 255) continue;
+                                    if (!isDel_Mode) Copy_Mask[ti] = 1;
+                                    else Copy_Mask[ti] = 0;
+                                    Copy_Col[ti] = MycRom.cFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ti];
+                                    Copy_Colo[ti] = MycRP.oFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ti];
+                                    Copy_Dyna[ti] = MycRom.DynaMasks[acFrame * MycRom.fWidth * MycRom.fHeight + ti];
+                                }
                             }
+                        }
+                        else
+                        {
+
                         }
                         return;
                     }
