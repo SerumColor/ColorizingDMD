@@ -33,7 +33,7 @@ using namespace Gdiplus;
 #pragma region Global_Variables
 
 #define MAJ_VERSION 1
-#define MIN_VERSION 0
+#define MIN_VERSION 20
 
 static TCHAR szWindowClass[] = _T("ColorizingDMD");
 static TCHAR szWindowClass2[] = _T("ChildWin");
@@ -2828,7 +2828,14 @@ void Sprite_Strip_Update(void)
     // Calculate the texture to display on the sprite strip
     if (pSpriteStrip) memset(pSpriteStrip, 0, MonWidth * FRAME_STRIP_HEIGHT2 * 4);
     if (MycRom.name[0] == 0) return;
-    if (MycRom.nSprites == 0) return;
+    if (MycRom.nSprites == 0)
+    {
+        glEnable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, TxSpriteStrip[!(acSSText)]);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, ScrW2, FRAME_STRIP_HEIGHT2, GL_RGBA, GL_UNSIGNED_BYTE, pSpriteStrip); //RGBA with 4 bytes alignment for efficiency
+        acSSText = !(acSSText); // equivalent to "x xor 1"
+        return;
+    }
         // Draw the sprites
     int addrow = ScrW2 * 4;
     UINT8* pstrip = pSpriteStrip + SS_LMargin * 4 + FRAME_STRIP_H_MARGIN * addrow;
@@ -3761,11 +3768,26 @@ void CompareAdditionalFrames(UINT nFrames, sFrames* pFrames)
             }
         }
     }
+    UINT32* pnomaskhash = (UINT32*)malloc(sizeof(UINT32) * MycRom.nFrames);
+    if (!pnomaskhash)
+    {
+        MessageBoxA(hWnd, "Impossible to get memory for flat hashes, incomplete comparison!", "Error", MB_OK);
+        return;
+    }
     for (int ti = 0; ti < (int)MycRom.nFrames; ti++)
     {
         if (!(ti % 200)) Display_Avancement((float)ti / (float)(MycRom.nFrames - 1), 2, 4);
-        if (MycRom.CompMaskID[ti] != 255) MycRom.HashCode[ti] = crc32_fast_mask(&MycRom.cFrames[MycRom.fWidth * MycRom.fHeight * ti], &MycRom.CompMasks[MycRom.CompMaskID[ti] * MycRom.fWidth * MycRom.fHeight], MycRom.fWidth * MycRom.fHeight, (BOOL)MycRom.ShapeCompMode[ti]);
-        else MycRom.HashCode[ti] = crc32_fast(&MycRom.cFrames[MycRom.fWidth * MycRom.fHeight * ti], MycRom.fWidth * MycRom.fHeight, (BOOL)MycRom.ShapeCompMode[ti]);
+        if (MycRom.CompMaskID[ti] != 255)
+        {
+            MycRom.HashCode[ti] = crc32_fast_mask(&MycRom.cFrames[MycRom.fWidth * MycRom.fHeight * ti], &MycRom.CompMasks[MycRom.CompMaskID[ti] * MycRom.fWidth * MycRom.fHeight], MycRom.fWidth * MycRom.fHeight, (BOOL)MycRom.ShapeCompMode[ti]);
+            pnomaskhash[ti] = crc32_fast(&MycRom.cFrames[MycRom.fWidth * MycRom.fHeight * ti], MycRom.fWidth * MycRom.fHeight, FALSE);
+        }
+        else
+        {
+            MycRom.HashCode[ti] = crc32_fast(&MycRom.cFrames[MycRom.fWidth * MycRom.fHeight * ti], MycRom.fWidth * MycRom.fHeight, (BOOL)MycRom.ShapeCompMode[ti]);
+            if (MycRom.ShapeCompMode[ti] == FALSE) pnomaskhash[ti] = MycRom.HashCode[ti];
+            else pnomaskhash[ti] = crc32_fast(&MycRom.cFrames[MycRom.fWidth * MycRom.fHeight * ti], MycRom.fWidth * MycRom.fHeight, FALSE);
+        }
     }
     // then compare the new frames with the previous ones
     for (unsigned int ti = 0; ti < nFrames; ti++)
@@ -3812,10 +3834,7 @@ void CompareAdditionalFrames(UINT nFrames, sFrames* pFrames)
             }
             else
             {
-                UINT32 hashold;
-                if (MycRom.CompMaskID[tj] != 255) hashold = crc32_fast(&MycRom.cFrames[MycRom.fWidth * MycRom.fHeight * tj], MycRom.fWidth * MycRom.fHeight, FALSE);
-                else hashold = MycRom.HashCode[tj];
-                if (hashold == pFrames[ti].hashcode)
+                if (pnomaskhash[ti] == pFrames[ti].hashcode)
                 {
                     pFrames[ti].active = FALSE;
                     nfrremsame++;
@@ -3825,6 +3844,7 @@ void CompareAdditionalFrames(UINT nFrames, sFrames* pFrames)
             }
         }
     }
+    free(pnomaskhash);
     cprintf("%i frames removed (%i for short duration, %i for too many colors, %i identical with mask and/or shapemode, %i identical) %i added", nfremoved, nfrremtime, nfrremcol, nfrremmask, nfrremsame, nFrames - nfremoved);
 }
 
@@ -4268,13 +4288,13 @@ LRESULT CALLBACK Filter_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
         {
         case IDC_DELTIME:
         {
-            if (Button_GetCheck(GetDlgItem(hwDlg, IDC_DELTIME)) == 0) EnableWindow(GetDlgItem(hwDlg, IDC_TIMELEN), FALSE);
+            if (SendMessage(GetDlgItem(hwDlg, IDC_DELTIME), BM_GETCHECK, 0, 0) == BST_UNCHECKED) EnableWindow(GetDlgItem(hwDlg, IDC_TIMELEN), FALSE);
             else EnableWindow(GetDlgItem(hwDlg, IDC_TIMELEN), TRUE);
             return TRUE;
         }
         case IDC_DELCOL:
         {
-            if (Button_GetCheck(GetDlgItem(hwDlg, IDC_DELCOL)) == 0) EnableWindow(GetDlgItem(hwDlg, IDC_NCOL), FALSE);
+            if (SendMessage(GetDlgItem(hwDlg, IDC_DELCOL), BM_GETCHECK, 0, 0) == BST_UNCHECKED) EnableWindow(GetDlgItem(hwDlg, IDC_NCOL), FALSE);
             else EnableWindow(GetDlgItem(hwDlg, IDC_NCOL), TRUE);
             return TRUE;
         }
@@ -4282,7 +4302,7 @@ LRESULT CALLBACK Filter_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
         {
             bool istimemod = false;
             bool iscolmod = false;
-            if (Button_GetCheck(GetDlgItem(hwDlg, IDC_DELTIME)) != 0)
+            if (SendMessage(GetDlgItem(hwDlg, IDC_DELTIME), BM_GETCHECK, 0, 0) == BST_CHECKED)
             {
                 char tbuf[256];
                 filter_time = true;
@@ -4304,7 +4324,7 @@ LRESULT CALLBACK Filter_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
                 }
             }
             else filter_time = false;
-            if (Button_GetCheck(GetDlgItem(hwDlg, IDC_DELCOL)) != 0)
+            if (SendMessage(GetDlgItem(hwDlg, IDC_DELCOL), BM_GETCHECK, 0, 0) == BST_CHECKED)
             {
                 char tbuf[256];
                 filter_color = true;
@@ -4326,7 +4346,7 @@ LRESULT CALLBACK Filter_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
                 }
             }
             else filter_color = false;
-            if (Button_GetCheck(GetDlgItem(hwDlg, IDC_DELMASK)) != 0) filter_allmask = true; else filter_allmask = false;
+            if (SendMessage(GetDlgItem(hwDlg, IDC_DELMASK),BM_GETCHECK,0,0) == BST_CHECKED) filter_allmask = true; else filter_allmask = false;
             if (istimemod && iscolmod)
             {
                 MessageBoxA(hWnd, "The time length and number of colors values have been automatically changed, check them and confirm again", "Confirm", MB_OK);
@@ -4752,20 +4772,23 @@ LRESULT CALLBACK PalProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
         else if (Start_Col_Exchange)
         {
             UINT8 Der_Col_Exchange = ((UINT8)(pt.x - MARGIN_PALETTE) / 20) + 8 * ((UINT8)(pt.y - MARGIN_PALETTE) / 20);
-            for (UINT ti = 0; ti < MycRom.fWidth * MycRom.fHeight; ti++)
+            for (int tj = 0; tj < (int)nSelFrames; tj++)
             {
-                if (MycRom.cFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ti] == Pre_Col_Exchange) MycRom.cFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ti] = Der_Col_Exchange;
-                else if (MycRom.cFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ti] == Der_Col_Exchange) MycRom.cFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ti] = Pre_Col_Exchange;
+                for (UINT ti = 0; ti < MycRom.fWidth * MycRom.fHeight; ti++)
+                {
+                    if (MycRom.cFrames[SelFrames[tj] * MycRom.fWidth * MycRom.fHeight + ti] == Pre_Col_Exchange) MycRom.cFrames[SelFrames[tj] * MycRom.fWidth * MycRom.fHeight + ti] = Der_Col_Exchange;
+                    else if (MycRom.cFrames[SelFrames[tj] * MycRom.fWidth * MycRom.fHeight + ti] == Der_Col_Exchange) MycRom.cFrames[SelFrames[tj] * MycRom.fWidth * MycRom.fHeight + ti] = Pre_Col_Exchange;
+                }
+                UINT8 Rexc = MycRom.cPal[SelFrames[tj] * 3 * MycRom.ncColors + Pre_Col_Exchange * 3];
+                UINT8 Vexc = MycRom.cPal[SelFrames[tj] * 3 * MycRom.ncColors + Pre_Col_Exchange * 3 + 1];
+                UINT8 Bexc = MycRom.cPal[SelFrames[tj] * 3 * MycRom.ncColors + Pre_Col_Exchange * 3 + 2];
+                MycRom.cPal[SelFrames[tj] * 3 * MycRom.ncColors + Pre_Col_Exchange * 3] = MycRom.cPal[SelFrames[tj] * 3 * MycRom.ncColors + Der_Col_Exchange * 3];
+                MycRom.cPal[SelFrames[tj] * 3 * MycRom.ncColors + Pre_Col_Exchange * 3 + 1] = MycRom.cPal[SelFrames[tj] * 3 * MycRom.ncColors + Der_Col_Exchange * 3 + 1];
+                MycRom.cPal[SelFrames[tj] * 3 * MycRom.ncColors + Pre_Col_Exchange * 3 + 2] = MycRom.cPal[SelFrames[tj] * 3 * MycRom.ncColors + Der_Col_Exchange * 3 + 2];
+                MycRom.cPal[SelFrames[tj] * 3 * MycRom.ncColors + Der_Col_Exchange * 3] = Rexc;
+                MycRom.cPal[SelFrames[tj] * 3 * MycRom.ncColors + Der_Col_Exchange * 3 + 1] = Vexc;
+                MycRom.cPal[SelFrames[tj] * 3 * MycRom.ncColors + Der_Col_Exchange * 3 + 2] = Bexc;
             }
-            UINT8 Rexc = MycRom.cPal[acFrame * 3 * MycRom.ncColors + Pre_Col_Exchange * 3];
-            UINT8 Vexc = MycRom.cPal[acFrame * 3 * MycRom.ncColors + Pre_Col_Exchange * 3 + 1];
-            UINT8 Bexc = MycRom.cPal[acFrame * 3 * MycRom.ncColors + Pre_Col_Exchange * 3 + 2];
-            MycRom.cPal[acFrame * 3 * MycRom.ncColors + Pre_Col_Exchange * 3] = MycRom.cPal[acFrame * 3 * MycRom.ncColors + Der_Col_Exchange * 3];
-            MycRom.cPal[acFrame * 3 * MycRom.ncColors + Pre_Col_Exchange * 3 + 1] = MycRom.cPal[acFrame * 3 * MycRom.ncColors + Der_Col_Exchange * 3 + 1];
-            MycRom.cPal[acFrame * 3 * MycRom.ncColors + Pre_Col_Exchange * 3 + 2] = MycRom.cPal[acFrame * 3 * MycRom.ncColors + Der_Col_Exchange * 3 + 2];
-            MycRom.cPal[acFrame * 3 * MycRom.ncColors + Der_Col_Exchange * 3] = Rexc;
-            MycRom.cPal[acFrame * 3 * MycRom.ncColors + Der_Col_Exchange * 3 + 1] = Vexc;
-            MycRom.cPal[acFrame * 3 * MycRom.ncColors + Der_Col_Exchange * 3 + 2] = Bexc;
             Start_Col_Exchange = false;
         }
         else if ((hWin == hPal) && (!(GetKeyState(VK_SHIFT) & 0x8000)) && (!(GetKeyState(VK_CONTROL) & 0x8000)) && (!(GetKeyState(VK_MENU) & 0x8000)) && (!Start_Col_Exchange)) // just select a color
@@ -5470,8 +5493,13 @@ void UpdateFrameSpriteList(void)
     SendMessage(GetDlgItem(hwTB, IDC_SPRITELIST2), CB_RESETCONTENT, 0, 0);
     int ti = 0;
     char tbuf[256];
-    while ((MycRom.FrameSprites[acFrame * MAX_SPRITES_PER_FRAME + ti] < 255) && (ti < MAX_SPRITES_PER_FRAME))
+    while (ti < MAX_SPRITES_PER_FRAME)
     {
+        if (MycRom.FrameSprites[acFrame * MAX_SPRITES_PER_FRAME + ti] == 255)
+        {
+            ti++;
+            continue;
+        }
         UINT nospr = MycRom.FrameSprites[acFrame * MAX_SPRITES_PER_FRAME + ti];
         sprintf_s(tbuf, 256, "%i - %s", nospr, &MycRP.Sprite_Names[SIZE_SECTION_NAMES * nospr]);
         SendMessageA(GetDlgItem(hwTB, IDC_SPRITELIST2), CB_ADDSTRING, 0, (LPARAM)tbuf);
@@ -6193,6 +6221,9 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                         {
                             if (Copy_Mask[ti+tj*MycRom.fWidth] > 0)
                             {
+                                Copy_Col[ti + tj * MycRom.fWidth] = MycRom.cFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ti + tj * MycRom.fWidth];
+                                Copy_Colo[ti + tj * MycRom.fWidth] = MycRP.oFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ti + tj * MycRom.fWidth];
+                                Copy_Dyna[ti + tj * MycRom.fWidth] = MycRom.DynaMasks[acFrame * MycRom.fWidth * MycRom.fHeight + ti + tj * MycRom.fWidth];
                                 datafound = true;
                                 if (ti > cmaxx) cmaxx = ti;
                                 if (ti < cminx) cminx = ti;
@@ -6559,7 +6590,7 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
     }
     case WM_DRAWITEM:
     {
-        if (MycRom.name[0] == 0) return TRUE;
+        if ((MycRom.name[0] == 0) || (MycRom.nSprites == 0)) return TRUE;
         LPDRAWITEMSTRUCT lpdis = (LPDRAWITEMSTRUCT)lParam;
         UINT tpm;
         if ((lpdis->CtlID >= IDC_COL1) && (lpdis->CtlID <= IDC_COL16))
@@ -6638,11 +6669,12 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                     }
                     Delete_Sprite(acSprite);
                     UpdateSpriteList();
+                    UpdateFrameSpriteList();
                     for (UINT ti = IDC_COL1; ti <= IDC_COL16; ti++) InvalidateRect(GetDlgItem(hwTB2, ti), NULL, TRUE);
                 }
+                if ((acSprite >= MycRom.nSprites) && (MycRom.nSprites > 0)) acSprite = MycRom.nSprites - 1;
                 if (acSprite >= PreSpriteInStrip + NSpriteToDraw) PreSpriteInStrip = acSprite - NSpriteToDraw + 1;
                 if ((int)acSprite < PreSpriteInStrip) PreSpriteInStrip = acSprite;
-                if (acSprite >= MycRom.nSprites) acSprite = MycRom.nSprites - 1;
                 UpdateSSneeded = true;
                 return TRUE;
             }
