@@ -34,12 +34,13 @@ using namespace Gdiplus;
 
 #define MAJ_VERSION 1
 #define MIN_VERSION 20
+#define PATCH_VERSION 0
 
 static TCHAR szWindowClass[] = _T("ColorizingDMD");
 static TCHAR szWindowClass2[] = _T("ChildWin");
 
 HINSTANCE hInst;                                // current instance
-HWND hWnd = NULL, hwTB = NULL, hwTB2 = NULL, hPal = NULL, hPal2 = NULL, hPal3 = NULL, hMovSec = NULL, hColSet = NULL, hSprites = NULL;
+HWND hWnd = NULL, hwTB = NULL, hwTB2 = NULL, hPal = NULL, hPal2 = NULL, hPal3 = NULL, hMovSec = NULL, hColSet = NULL, hSprites = NULL, hStatus = NULL, hStatus2 = NULL;
 UINT ColSetMode = 0, preColRot = 0, acColRot = 0; // 0- displaying colsets, 1- displaying colrots
 GLFWwindow * glfwframe, * glfwframestrip,*glfwsprites,*glfwspritestrip;	// handle+context of our window
 bool fDone = false;
@@ -185,6 +186,8 @@ bool Ident_Pushed = false;
 
 bool filter_time = false, filter_allmask = false, filter_color = false;
 int filter_length = 15, filter_ncolor = 16;
+
+int statusBarHeight;
 
 #pragma endregion Global_Variables
 
@@ -2297,7 +2300,7 @@ void Calc_Resize_Frame(void)
             FS_LMargin = (ScrW - (NFrameToDraw * (FRAME_STRIP_W_MARGIN + 192) + FRAME_STRIP_W_MARGIN)) / 2; // calculate the left and right margin in the strip
         }
     }
-    int thei = winrect.bottom - (TOOLBAR_HEIGHT + 20) - FRAME_STRIP_HEIGHT;
+    int thei = winrect.bottom - (TOOLBAR_HEIGHT + 20) - FRAME_STRIP_HEIGHT - statusBarHeight - 20;
     int twid = winrect.right;
     int mul = 4;
     if (MycRom.name[0])
@@ -2327,7 +2330,7 @@ void Calc_Resize_Frame(void)
     glfwSetWindowPos(glfwframe, offset_frame_x, offset_frame_y);
     SetViewport(glfwframe);
     glfwSetWindowSize(glfwframestrip, ScrW, FRAME_STRIP_HEIGHT);
-    glfwSetWindowPos(glfwframestrip, 0, ScrH - FRAME_STRIP_HEIGHT);
+    glfwSetWindowPos(glfwframestrip, 0, ScrH - FRAME_STRIP_HEIGHT - statusBarHeight);
     SetViewport(glfwframestrip);
 }
 
@@ -2341,7 +2344,7 @@ void Calc_Resize_Sprite(void)
     ScrH2 = winrect.bottom;
     NSpriteToDraw = (int)((float)(ScrW2 - FRAME_STRIP_W_MARGIN) / (float)(2* MAX_SPRITE_SIZE + FRAME_STRIP_W_MARGIN)); // Calculate the number of frames to display in the strip
     SS_LMargin = (ScrW2 - (NSpriteToDraw * (FRAME_STRIP_W_MARGIN + 2* MAX_SPRITE_SIZE) + FRAME_STRIP_W_MARGIN)) / 2; // calculate the left and right margin in the strip
-    int thei = winrect.bottom - (TOOLBAR_HEIGHT + 20) - FRAME_STRIP_HEIGHT2;
+    int thei = winrect.bottom - (TOOLBAR_HEIGHT + 20) - FRAME_STRIP_HEIGHT2 - statusBarHeight - 20;
     int twid = winrect.right;
     float mul = 2 + SPRITE_INTERVAL / (float)MAX_SPRITE_SIZE;
     if (((float)twid / (float)thei) > mul) twid = (int)(thei * mul); else
@@ -2358,7 +2361,7 @@ void Calc_Resize_Sprite(void)
     glfwSetWindowPos(glfwsprites, offset_sprite_x, offset_sprite_y);
     SetViewport(glfwsprites);
     glfwSetWindowSize(glfwspritestrip, ScrW2, FRAME_STRIP_HEIGHT2);
-    glfwSetWindowPos(glfwspritestrip, 0, ScrH2 - FRAME_STRIP_HEIGHT2);
+    glfwSetWindowPos(glfwspritestrip, 0, ScrH2 - FRAME_STRIP_HEIGHT2 - statusBarHeight);
     SetViewport(glfwspritestrip);
 }
 
@@ -3126,6 +3129,54 @@ void SaveSaveDir(void)
     }
     fwrite(MycRP.SaveDir, 1, MAX_PATH, pfile);
     fclose(pfile);
+}
+
+void SaveWindowPosition(void)
+{
+    HKEY tKey;
+    LSTATUS ls = RegCreateKeyExA(HKEY_CURRENT_USER, "SOFTWARE\\ColorizingDMD", 0, NULL, 0, KEY_WRITE, NULL, &tKey, NULL);
+    if (ls == ERROR_SUCCESS)
+    {
+        WINDOWPLACEMENT wp;
+        wp.length = sizeof(WINDOWPLACEMENT);
+        GetWindowPlacement(hWnd, &wp);
+        RegSetValueExA(tKey, "MAIN_LEFT", 0, REG_DWORD, (const BYTE*)&wp.rcNormalPosition.left, 4);
+        RegSetValueExA(tKey, "MAIN_RIGHT", 0, REG_DWORD, (const BYTE*)&wp.rcNormalPosition.right, 4);
+        RegSetValueExA(tKey, "MAIN_TOP", 0, REG_DWORD, (const BYTE*)&wp.rcNormalPosition.top, 4);
+        RegSetValueExA(tKey, "MAIN_BOTTOM", 0, REG_DWORD, (const BYTE*)&wp.rcNormalPosition.bottom, 4);
+        GetWindowPlacement(hSprites, &wp);
+        RegSetValueExA(tKey, "SPRITE_LEFT", 0, REG_DWORD, (const BYTE*)&wp.rcNormalPosition.left, 4);
+        RegSetValueExA(tKey, "SPRITE_RIGHT", 0, REG_DWORD, (const BYTE*)&wp.rcNormalPosition.right, 4);
+        RegSetValueExA(tKey, "SPRITE_TOP", 0, REG_DWORD, (const BYTE*)&wp.rcNormalPosition.top, 4);
+        RegSetValueExA(tKey, "SPRITE_BOTTOM", 0, REG_DWORD, (const BYTE*)&wp.rcNormalPosition.bottom, 4);
+        RegCloseKey(tKey);
+    }
+}
+
+void LoadWindowPosition(void)
+{
+    HKEY tKey;
+    LSTATUS ls = RegOpenKeyExA(HKEY_CURRENT_USER, "SOFTWARE\\ColorizingDMD",0,KEY_READ,&tKey);
+    if (ls == ERROR_SUCCESS)
+    {
+        int posx, posy, wid, hei;
+        DWORD size = 4;
+        RegGetValueA(tKey, NULL, "SPRITE_LEFT", RRF_RT_REG_DWORD, 0, &posx, &size);
+        RegGetValueA(tKey, NULL, "SPRITE_TOP", RRF_RT_REG_DWORD, 0, &posy, &size);
+        RegGetValueA(tKey, NULL, "SPRITE_RIGHT", RRF_RT_REG_DWORD, 0, &wid, &size);
+        wid -= posx - 1;
+        RegGetValueA(tKey, NULL, "SPRITE_BOTTOM", RRF_RT_REG_DWORD, 0, &hei, &size);
+        hei -= posy - 1;
+        SetWindowPos(hSprites, HWND_TOP, posx, posy, wid, hei, SWP_SHOWWINDOW);
+        RegGetValueA(tKey, NULL, "MAIN_LEFT", RRF_RT_REG_DWORD, 0, &posx, &size);
+        RegGetValueA(tKey, NULL, "MAIN_TOP", RRF_RT_REG_DWORD, 0, &posy, &size);
+        RegGetValueA(tKey, NULL, "MAIN_RIGHT", RRF_RT_REG_DWORD, 0, &wid, &size);
+        wid -= posx - 1;
+        RegGetValueA(tKey, NULL, "MAIN_BOTTOM", RRF_RT_REG_DWORD, 0, &hei, &size);
+        hei -= posy - 1;
+        SetWindowPos(hWnd, HWND_TOP, posx, posy, wid, hei, SWP_SHOWWINDOW);
+        RegCloseKey(tKey);
+    }
 }
 
 bool ColorizedFrame(UINT nofr)
@@ -4918,6 +4969,10 @@ LRESULT CALLBACK WndProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message)
     {
+    case WM_CREATE:
+    {
+        break;
+    }
     case WM_COMMAND:
     {
         int wmId = LOWORD(wParam);
@@ -4974,6 +5029,16 @@ LRESULT CALLBACK WndProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
         {
             Calc_Resize_Frame();
             UpdateFSneeded = true;
+            int cxClient = LOWORD(lParam);
+            int cyClient = HIWORD(lParam);
+            // Resize the status bar to fit the new client area width
+            SendMessage(hStatus, WM_SIZE, 0, MAKELPARAM(cxClient, cyClient));
+            // Position the status bar at the bottom of the window
+            RECT rcStatusBar;
+            GetWindowRect(hStatus, &rcStatusBar);
+            int statusBarHeight = rcStatusBar.bottom - rcStatusBar.top;
+            MoveWindow(hStatus, 0, cyClient - statusBarHeight, cxClient, statusBarHeight, TRUE);
+            break;
         }
     } // no "break" here as the code in WM_MOVE is common
     case WM_MOVE:
@@ -5013,7 +5078,11 @@ LRESULT CALLBACK WndProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
     }*/
     case WM_CLOSE:
     {
-        if (MessageBoxA(hWnd, "Confirm you want to exit?", "Confirm", MB_YESNO) == IDYES) DestroyWindow(hWnd);
+        if (MessageBoxA(hWnd, "Confirm you want to exit?", "Confirm", MB_YESNO) == IDYES)
+        {
+            SaveWindowPosition();
+            DestroyWindow(hWnd);
+        }
         break;
     }
     case WM_DESTROY:
@@ -5039,11 +5108,24 @@ LRESULT CALLBACK WndProc2(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
             Calc_Resize_Sprite();
             UpdateSSneeded = true;
         }
+        int cxClient = LOWORD(lParam);
+        int cyClient = HIWORD(lParam);
+        // Resize the status bar to fit the new client area width
+        SendMessage(hStatus2, WM_SIZE, 0, MAKELPARAM(cxClient, cyClient));
+        // Position the status bar at the bottom of the window
+        RECT rcStatusBar;
+        GetWindowRect(hStatus2, &rcStatusBar);
+        int statusBarHeight = rcStatusBar.bottom - rcStatusBar.top;
+        MoveWindow(hStatus2, 0, cyClient - statusBarHeight, cxClient, statusBarHeight, TRUE);
         break;
     } // no "break" here as the code in WM_MOVE is common
     case WM_CLOSE:
     {
-        if (MessageBoxA(hWin, "Confirm you want to exit?", "Confirm", MB_YESNO) == IDYES) DestroyWindow(hWin);
+        if (MessageBoxA(hWin, "Confirm you want to exit?", "Confirm", MB_YESNO) == IDYES)
+        {
+            SaveWindowPosition();
+            DestroyWindow(hWin);
+        }
         break;
     }
     case WM_DESTROY:
@@ -5508,108 +5590,192 @@ void UpdateFrameSpriteList(void)
     SendMessage(GetDlgItem(hwTB, IDC_SPRITELIST2), CB_SETCURSEL, 0, 0);
 }
 
-WNDPROC oldMaskListFunc, oldMask2ListFunc, oldSectionListoFunc, oldSectionListcFunc, oldSpriteListFunc, oldSpriteList2Func, oldSpriteDetListFunc;
-char functoremove = 0;
-
-LRESULT CALLBACK SubclassSpriteListProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+const char* ButtonDescription(HWND hOver)
 {
-    switch (uMsg) {
-    case WM_KEYDOWN:
+    if (hOver == GetDlgItem(hwTB, IDC_NEW)) return (const char*)"Create a new Serum project from a TXT dump file";
+    if (hOver == GetDlgItem(hwTB, IDC_ADDTXT)) return (const char*)"Add a TXT dump file to the Serum project";
+    if (hOver == GetDlgItem(hwTB, IDC_OPEN)) return (const char*)"Open a Serum project";
+    if (hOver == GetDlgItem(hwTB, IDC_SAVE)) return (const char*)"Save the Serum project";
+    if (hOver == GetDlgItem(hwTB, IDC_UNDO)) return (const char*)"Undo last action";
+    if (hOver == GetDlgItem(hwTB, IDC_REDO)) return (const char*)"Redo last action";
+    if (hOver == GetDlgItem(hwTB, IDC_SECTIONNAME)) return (const char*)"Enter the name for a new section here";
+    if (hOver == GetDlgItem(hwTB, IDC_ADDSECTION)) return (const char*)"Add a section named after the text in the box beside";
+    if (hOver == GetDlgItem(hwTB, IDC_DELSECTION)) return (const char*)"Delete the section";
+    if (hOver == GetDlgItem(hwTB, IDC_MOVESECTION)) return (const char*)"Open a dialog to reorder your sections";
+    if (Edit_Mode == 0)
     {
-        return TRUE;
+        if (hOver == GetDlgItem(hwTB, IDC_COLMODE)) return (const char*)"Switch to Colorization mode";
+        if (hOver == GetDlgItem(hwTB, IDC_MASKLIST)) return (const char*)"Choose a mask in the list";
+        if (hOver == GetDlgItem(hwTB, IDC_POINTMASK)) return (const char*)"Point tool to draw masks";
+        if (hOver == GetDlgItem(hwTB, IDC_RECTMASK)) return (const char*)"Filled-rectangle tool to draw masks";
+        if (hOver == GetDlgItem(hwTB, IDC_ZONEMASK)) return (const char*)"Magic wand tool to draw masks";
+        if (hOver == GetDlgItem(hwTB, IDC_INVERTSEL)) return (const char*)"Invert the mask selection";
+        if (hOver == GetDlgItem(hwTB, IDC_SHAPEMODE)) return (const char*)"Switch to shape mode";
+        if (hOver == GetDlgItem(hwTB, IDC_ZONEMASK)) return (const char*)"Magic wand tool to draw masks";
+        if (hOver == GetDlgItem(hwTB, IDC_SAMEFRAME)) return (const char*)"How many same frames detected";
+        if (hOver == GetDlgItem(hwTB, IDC_DELSAMEFR)) return (const char*)"Delete frames similar to the current displayed one taking into account masks and shape mode";
+        if (hOver == GetDlgItem(hwTB, IDC_DELSELSAMEFR)) return (const char*)"Delete frames similar to the current selected ones taking into account masks and shape mode";
+        if (hOver == GetDlgItem(hwTB, IDC_DELALLSAMEFR)) return (const char*)"Delete all the frames similar taking into account masks and shape mode";
+        if (hOver == GetDlgItem(hwTB, IDC_DELFRAME)) return (const char*)"Delete selected frames";
+        if (hOver == GetDlgItem(hwTB, IDC_TRIGID)) return (const char*)"[PuP packs] Trigger ID for an event";
+        if (hOver == GetDlgItem(hwTB, IDC_DELTID)) return (const char*)"[PuP packs] Delete the trigger";
+        if (hOver == GetDlgItem(hwTB, IDC_MASKLIST2)) return (const char*)"Choose a mask here to list the frames using it below";
+        if (hOver == GetDlgItem(hwTB, IDC_MOVESECTION)) return (const char*)"List of frames using the mask above";
+        if (hOver == GetDlgItem(hwTB, IDC_SECTIONLIST)) return (const char*)"Choose a section here to jump to its first frame";
     }
+    else
+    {
+        if (hOver == GetDlgItem(hwTB, IDC_ORGMODE)) return (const char*)"Switch to Comparison mode";
+        for (int ti = 0; ti < 16; ti++)
+        {
+            if (hOver == GetDlgItem(hwTB, IDC_COL1 + ti))
+            {
+                char tbuf[512];
+                sprintf_s(tbuf, 512, "Select the color #%i for drawing in the 64-colour palette", ti + 1);
+                return tbuf;
+            }
+            if (hOver == GetDlgItem(hwTB, IDC_DYNACOL1 + ti))
+            {
+                char tbuf[512];
+                sprintf_s(tbuf, 512, "Select the color #%i for dynamic colorization in the 64-colour palette", ti + 1);
+                return tbuf;
+            }
+        }
+        if (hOver == GetDlgItem(hwTB, IDC_ORGMODE)) return (const char*)"Switch to Comparison mode";
+        if (hOver == GetDlgItem(hwTB, IDC_COLSET)) return (const char*)"Show a dialog box to manage the color sets";
+        if (hOver == GetDlgItem(hwTB, IDC_COLPICK)) return (const char*)"Pick a color from the displayed frame";
+        if (hOver == GetDlgItem(hwTB, IDC_1COLMODE)) return (const char*)"Draw using a single color";
+        if (hOver == GetDlgItem(hwTB, IDC_4COLMODE)) return (const char*)"Draw replacing the original frame with the selected set of colors";
+        if (hOver == GetDlgItem(hwTB, IDC_GRADMODE)) return (const char*)"Draw using gradients";
+        if (hOver == GetDlgItem(hwTB, IDC_GRADMODEB)) return (const char*)"Draw using gradients";
+        if (hOver == GetDlgItem(hwTB, IDC_DRAWPOINT)) return (const char*)"Point tool to draw or select";
+        if (hOver == GetDlgItem(hwTB, IDC_DRAWLINE)) return (const char*)"Line tool to draw or select";
+        if (hOver == GetDlgItem(hwTB, IDC_DRAWRECT)) return (const char*)"Rectangle tool to draw or select";
+        if (hOver == GetDlgItem(hwTB, IDC_DRAWCIRC)) return (const char*)"Circle tool to draw or select";
+        if (hOver == GetDlgItem(hwTB, IDC_FILL)) return (const char*)"Magic wand tool to draw or select";
+        if (hOver == GetDlgItem(hwTB, IDC_FILLED)) return (const char*)"Draw/select rectangles or circles are filled or not?";
+        if (hOver == GetDlgItem(hwTB, IDC_COPYCOLS)) return (const char*)"Copy the color set from the displayed frame to the other selected ones";
+        if (hOver == GetDlgItem(hwTB, IDC_COPYCOLS2)) return (const char*)"Copy the whole 64-colour palette from the displayed frame to the other selected ones";
+        if (hOver == GetDlgItem(hwTB, IDC_CHANGECOLSET)) return (const char*)"Switch between the different dynamic color sets";
+        if (hOver == GetDlgItem(hwTB, IDC_COLTODYNA)) return (const char*)"Copy the color set for drawing to the current dynamic set";
+        if (hOver == GetDlgItem(hwTB, IDC_IDENT)) return (const char*)"Identify the points on the displayed frame where the active dynamic set is used";
+        if (hOver == GetDlgItem(hwTB, IDC_COPY)) return (const char*)"Copy selected content";
+        if (hOver == GetDlgItem(hwTB, IDC_PASTE)) return (const char*)"Paste selected content";
+        if (hOver == GetDlgItem(hwTB, IDC_INVERTSEL2)) return (const char*)"Invert selection for copy";
+        if (hOver == GetDlgItem(hwTB, IDC_SECTIONLIST2)) return (const char*)"Choose a section here to jump to its first frame";
+        if (hOver == GetDlgItem(hwTB, IDC_ADDSPRITE2)) return (const char*)"Add the current sprite in the sprite window to the list of sprites to be detected when this frame is found";
+        if (hOver == GetDlgItem(hwTB, IDC_DELSPRITE2)) return (const char*)"Delete the current sprite in the sprite window from the list of sprites to be detected when this frame is found";
+        if (hOver == GetDlgItem(hwTB, IDC_SPRITELIST2)) return (const char*)"List of sprites to be detected when this frame is found";
+        if (hOver == GetDlgItem(hwTB, IDC_COLROT)) return (const char*)"Display a dialog to manage the color rotations";
     }
-    return CallWindowProc(oldSpriteListFunc, hwnd, uMsg, wParam, lParam);// CallWindowProc(oldMaskListFunc, hwnd, uMsg, wParam, lParam);
+    return "";
 }
 
-LRESULT CALLBACK SubclassSpriteDetListProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
-{
-    switch (uMsg) {
-    case WM_KEYDOWN:
-    {
-        return TRUE;
-    }
-    }
-    return CallWindowProc(oldSpriteDetListFunc, hwnd, uMsg, wParam, lParam);// CallWindowProc(oldMaskListFunc, hwnd, uMsg, wParam, lParam);
-}
-
-LRESULT CALLBACK SubclassSpriteList2Proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
-{
-    switch (uMsg) {
-    case WM_KEYDOWN:
-    {
-        return TRUE;
-    }
-    }
-    return CallWindowProc(oldSpriteList2Func, hwnd, uMsg, wParam, lParam);// CallWindowProc(oldMaskListFunc, hwnd, uMsg, wParam, lParam);
-}
-
-LRESULT CALLBACK SubclassMaskListProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
-{
-    switch (uMsg) {
-    case WM_KEYDOWN:
-    {
-        return TRUE;
-    }
-    }
-    return CallWindowProc(oldMaskListFunc, hwnd, uMsg, wParam, lParam);// CallWindowProc(oldMaskListFunc, hwnd, uMsg, wParam, lParam);
-}
-
-LRESULT CALLBACK SubclassMask2ListProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
-{
-    switch (uMsg) {
-    case WM_KEYDOWN:
-    {
-        return TRUE;
-    }
-    }
-    return CallWindowProc(oldMask2ListFunc, hwnd, uMsg, wParam, lParam);// CallWindowProc(oldMaskListFunc, hwnd, uMsg, wParam, lParam);
-}
-
-LRESULT CALLBACK SubclassSecListoProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
-{
-    switch (uMsg) {
+LRESULT CALLBACK ButtonSubclassProc(HWND hBut, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+    switch (message) {
         case WM_KEYDOWN:
         {
             return TRUE;
         }
-    }
-    return CallWindowProc(oldSectionListoFunc, hwnd, uMsg, wParam, lParam);// CallWindowProc(oldMaskListFunc, hwnd, uMsg, wParam, lParam);
-}
-
-LRESULT CALLBACK SubclassSecListcProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
-{
-    switch (uMsg) {
-        case WM_KEYDOWN:
+        case WM_MOUSEMOVE:
         {
-            return TRUE;
+            TRACKMOUSEEVENT tme;
+            tme.cbSize = sizeof(TRACKMOUSEEVENT);
+            tme.dwFlags = TME_LEAVE;
+            tme.hwndTrack = hBut;
+            tme.dwHoverTime = HOVER_DEFAULT;
+            TrackMouseEvent(&tme);
+            SetWindowTextA(hStatus, ButtonDescription(hBut));
+            break;
+        }
+        case WM_MOUSELEAVE:
+        {
+            // The mouse has left the button
+            SetWindowTextA(hStatus, "");
+            break;
         }
     }
-    return CallWindowProc(oldSectionListcFunc, hwnd, uMsg, wParam, lParam);// CallWindowProc(oldMaskListFunc, hwnd, uMsg, wParam, lParam);
+
+    // Call the default button window procedure for any unhandled messages
+    return DefSubclassProc(hBut, message, wParam, lParam);
 }
 
 INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
-    UNREFERENCED_PARAMETER(lParam);
+    //UNREFERENCED_PARAMETER(lParam);
     switch (message)
     {
         case WM_INITDIALOG:
         {
+            /*HWND hwndChild = GetWindow(hDlg, GW_CHILD); // get the first child window
+            while (hwndChild != NULL)
+            {*/
+            SetWindowSubclass(GetDlgItem(hDlg, IDC_NEW), ButtonSubclassProc, 0, 0);
+            SetWindowSubclass(GetDlgItem(hDlg, IDC_ADDTXT), ButtonSubclassProc, 0, 0);
+            SetWindowSubclass(GetDlgItem(hDlg, IDC_OPEN), ButtonSubclassProc, 0, 0);
+            SetWindowSubclass(GetDlgItem(hDlg, IDC_SAVE), ButtonSubclassProc, 0, 0);
+            SetWindowSubclass(GetDlgItem(hDlg, IDC_UNDO), ButtonSubclassProc, 0, 0);
+            SetWindowSubclass(GetDlgItem(hDlg, IDC_REDO), ButtonSubclassProc, 0, 0);
+            SetWindowSubclass(GetDlgItem(hDlg, IDC_SECTIONNAME), ButtonSubclassProc, 0, 0);
+            SetWindowSubclass(GetDlgItem(hDlg, IDC_ADDSECTION), ButtonSubclassProc, 0, 0);
+            SetWindowSubclass(GetDlgItem(hDlg, IDC_DELSECTION), ButtonSubclassProc, 0, 0);
+            SetWindowSubclass(GetDlgItem(hDlg, IDC_MOVESECTION), ButtonSubclassProc, 0, 0);
             if (Edit_Mode == 0)
             {
-                COMBOBOXINFO cbi;
-                cbi.cbSize = sizeof(COMBOBOXINFO);
-                HWND hwtp = GetDlgItem(hDlg, IDC_MASKLIST);
-                if (GetComboBoxInfo(hwtp, &cbi) == 0) AffLastError((char*)"Non");
-                hCBList = cbi.hwndList;
-                BOOL BRes = SetWindowSubclass(hCBList, CBList_Proc, 0, 0);
-                if (BRes == FALSE)
-                {
-                    AffLastError((char*)"Non");
-                }
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_COLMODE), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_MASKLIST), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_POINTMASK), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_RECTMASK), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_ZONEMASK), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_INVERTSEL), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_SHAPEMODE), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_SAMEFRAME), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_DELFRAME), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_DELSAMEFR), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_DELSELSAMEFR), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_DELALLSAMEFR), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_TRIGID), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_DELTID), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_MASKLIST2), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_MOVESECTION), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_SECTIONLIST), ButtonSubclassProc, 0, 0);
             }
             else
             {
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_ORGMODE), ButtonSubclassProc, 0, 0);
+                for (int ti = 0; ti < 16; ti++)
+                {
+                    SetWindowSubclass(GetDlgItem(hDlg, IDC_COL1 + ti), ButtonSubclassProc, 0, 0);
+                    SetWindowSubclass(GetDlgItem(hDlg, IDC_DYNACOL1 + ti), ButtonSubclassProc, 0, 0);
+                    //char tbuf[512];
+                    //sprintf_s(tbuf, 512, "(Left click)Select/(Right click)Modify the color #%i of the palette for drawing", ti+1);
+                }
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_COLSET), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_COLPICK), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_1COLMODE), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_4COLMODE), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_GRADMODE), ButtonSubclassProc, 0, 0);
+                //SetWindowSubclass(GetDlgItem(hDlg, IDC_GRADMODEB), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_DRAWPOINT), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_DRAWLINE), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_DRAWRECT), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_DRAWCIRC), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_FILL), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_FILLED), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_COPYCOLS), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_COPYCOLS2), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_CHANGECOLSET), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_COLTODYNA), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_IDENT), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_COPY), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_PASTE), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_INVERTSEL2), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_SECTIONLIST2), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_ADDSPRITE2), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_DELSPRITE2), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_SPRITELIST2), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_COLROT), ButtonSubclassProc, 0, 0);
+
                 if (MycRP.DrawColMode == 1)
                 {
                     SendMessage(GetDlgItem(hDlg, IDC_1COLMODE), BM_SETCHECK, FALSE, 0);
@@ -5846,6 +6012,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                         UpdateSSneeded = true;
                         Update_Toolbar = true;// CreateToolbar();
                         Update_Toolbar2 = true;
+                        UpdateSpriteList3();
                     }
                     return TRUE;
                 }
@@ -6417,6 +6584,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                     SaveAction(true, SA_FRAMESPRITES);
                     MycRom.FrameSprites[acFrame * MAX_SPRITES_PER_FRAME + ti] = acSprite;
                     UpdateFrameSpriteList();
+                    UpdateSpriteList3();
                     return TRUE;
                 }
                 case IDC_DELSPRITE2:
@@ -6427,6 +6595,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                     SaveAction(true, SA_FRAMESPRITES);
                     for (UINT ti = acpos; ti < MAX_SPRITES_PER_FRAME - 1; ti++) MycRom.FrameSprites[acFrame * MAX_SPRITES_PER_FRAME + ti] = MycRom.FrameSprites[acFrame * MAX_SPRITES_PER_FRAME + ti + 1];
                     UpdateFrameSpriteList();
+                    UpdateSpriteList3();
                     return TRUE;
                 }
                 case IDC_COLROT:
@@ -6568,11 +6737,97 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
 }
 
 
+const char* ButtonDescription2(HWND hOver)
+{
+    if (hOver == GetDlgItem(hwTB2, IDC_SAVE)) return (const char*)"Save the Serum project";
+    for (int ti = 0; ti < 16; ti++)
+    {
+        if (hOver == GetDlgItem(hwTB2, IDC_COL1 + ti))
+        {
+            char tbuf[512];
+            sprintf_s(tbuf, 512, "Select the color #%i for drawing in the 64-colour palette", ti + 1);
+            return tbuf;
+        }
+    }
+    if (hOver == GetDlgItem(hwTB2, IDC_SPRITENAME)) return (const char*)"Enter the name for a new sprite here";
+    if (hOver == GetDlgItem(hwTB2, IDC_SPRITELIST)) return (const char*)"List of all the sprites";
+    if (hOver == GetDlgItem(hwTB2, IDC_ADDSPRITE)) return (const char*)"Add a sprite named after the text in the box beside";
+    if (hOver == GetDlgItem(hwTB2, IDC_DELSPRITE)) return (const char*)"Delete the sprite";
+    if (hOver == GetDlgItem(hwTB2, IDC_UNDO)) return (const char*)"Undo last action";
+    if (hOver == GetDlgItem(hwTB2, IDC_REDO)) return (const char*)"Redo last action";
+    if (hOver == GetDlgItem(hwTB2, IDC_PASTE)) return (const char*)"Paste the selection from the frame as the selected sprite";
+    if (hOver == GetDlgItem(hwTB2, IDC_DRAWPOINT)) return (const char*)"Point tool to draw the sprite or the detection area";
+    if (hOver == GetDlgItem(hwTB2, IDC_DRAWLINE)) return (const char*)"Line tool to draw the sprite or the detection area";
+    if (hOver == GetDlgItem(hwTB2, IDC_DRAWRECT)) return (const char*)"Rectangle tool to draw the sprite or the detection area";
+    if (hOver == GetDlgItem(hwTB2, IDC_DRAWCIRC)) return (const char*)"Circle tool to draw the sprite or the detection area";
+    if (hOver == GetDlgItem(hwTB2, IDC_FILL)) return (const char*)"Magic wand tool to draw the sprite or the detection area";
+    if (hOver == GetDlgItem(hwTB2, IDC_FILLED)) return (const char*)"Draw rectangles or circles are filled or not?";
+    if (hOver == GetDlgItem(hwTB2, IDC_ADDTOFRAME)) return (const char*)"Add this sprite to the list of sprites to be detected to the current displayed frame";
+    if (hOver == GetDlgItem(hwTB2, IDC_TOFRAME)) return (const char*)"Display the frame this sprite has been extracted from in the colorization window (will be wrong if this frame has been deleted)";
+    if (hOver == GetDlgItem(hwTB2, IDC_DETSPR)) return (const char*)"Select the detection zone to draw";
+    if (hOver == GetDlgItem(hwTB2, IDC_DELDETSPR)) return (const char*)"Delete this detection zone from the sprite";
+    if (hOver == GetDlgItem(hwTB2, IDC_SPRITELIST2)) return (const char*)"Select a sprite to show the frames using it below";
+    if (hOver == GetDlgItem(hwTB2, IDC_FRUSESPRITE)) return (const char*)"List of frames using the sprite selected above";
+    return "";
+}
+
+LRESULT CALLBACK ButtonSubclassProc2(HWND hBut, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+    switch (message) {
+        case WM_KEYDOWN:
+        {
+            return TRUE;
+        }
+        case WM_MOUSEMOVE:
+        {
+            TRACKMOUSEEVENT tme;
+            tme.cbSize = sizeof(TRACKMOUSEEVENT);
+            tme.dwFlags = TME_LEAVE;
+            tme.hwndTrack = hBut;
+            tme.dwHoverTime = HOVER_DEFAULT;
+            TrackMouseEvent(&tme);
+            SetWindowTextA(hStatus2, ButtonDescription2(hBut));
+            break;
+        }
+        case WM_MOUSELEAVE:
+        {
+            // The mouse has left the button
+            SetWindowTextA(hStatus2, "");
+            break;
+        }
+    }
+
+    // Call the default button window procedure for any unhandled messages
+    return DefSubclassProc(hBut, message, wParam, lParam);
+}
+
 INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
-    UNREFERENCED_PARAMETER(lParam);
     switch (message)
     {
+    case WM_INITDIALOG:
+    {
+        SetWindowSubclass(GetDlgItem(hDlg, IDC_SAVE), ButtonSubclassProc2, 0, 0);
+        for (int ti = 0; ti < 16; ti++) SetWindowSubclass(GetDlgItem(hDlg, IDC_COL1 + ti), ButtonSubclassProc2, 0, 0);
+        SetWindowSubclass(GetDlgItem(hDlg, IDC_SPRITENAME), ButtonSubclassProc2, 0, 0);
+        SetWindowSubclass(GetDlgItem(hDlg, IDC_SPRITELIST), ButtonSubclassProc2, 0, 0);
+        SetWindowSubclass(GetDlgItem(hDlg, IDC_ADDSPRITE), ButtonSubclassProc2, 0, 0);
+        SetWindowSubclass(GetDlgItem(hDlg, IDC_DELSPRITE), ButtonSubclassProc2, 0, 0);
+        SetWindowSubclass(GetDlgItem(hDlg, IDC_UNDO), ButtonSubclassProc2, 0, 0);
+        SetWindowSubclass(GetDlgItem(hDlg, IDC_REDO), ButtonSubclassProc2, 0, 0);
+        SetWindowSubclass(GetDlgItem(hDlg, IDC_PASTE), ButtonSubclassProc2, 0, 0);
+        SetWindowSubclass(GetDlgItem(hDlg, IDC_DRAWPOINT), ButtonSubclassProc2, 0, 0);
+        SetWindowSubclass(GetDlgItem(hDlg, IDC_DRAWLINE), ButtonSubclassProc2, 0, 0);
+        SetWindowSubclass(GetDlgItem(hDlg, IDC_DRAWRECT), ButtonSubclassProc2, 0, 0);
+        SetWindowSubclass(GetDlgItem(hDlg, IDC_DRAWCIRC), ButtonSubclassProc2, 0, 0);
+        SetWindowSubclass(GetDlgItem(hDlg, IDC_FILL), ButtonSubclassProc2, 0, 0);
+        SetWindowSubclass(GetDlgItem(hDlg, IDC_FILLED), ButtonSubclassProc2, 0, 0);
+        SetWindowSubclass(GetDlgItem(hDlg, IDC_ADDTOFRAME), ButtonSubclassProc2, 0, 0);
+        SetWindowSubclass(GetDlgItem(hDlg, IDC_TOFRAME), ButtonSubclassProc2, 0, 0);
+        SetWindowSubclass(GetDlgItem(hDlg, IDC_DETSPR), ButtonSubclassProc2, 0, 0);
+        SetWindowSubclass(GetDlgItem(hDlg, IDC_DELDETSPR), ButtonSubclassProc2, 0, 0);
+        SetWindowSubclass(GetDlgItem(hDlg, IDC_SPRITELIST2), ButtonSubclassProc2, 0, 0);
+        SetWindowSubclass(GetDlgItem(hDlg, IDC_FRUSESPRITE), ButtonSubclassProc2, 0, 0);
+    }
     case WM_PAINT:
     {
         if (MycRom.name[0] == 0) return FALSE;
@@ -6710,6 +6965,7 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                 SaveAction(true, SA_FRAMESPRITES);
                 MycRom.FrameSprites[acFrame * MAX_SPRITES_PER_FRAME + ti] = acSprite;
                 UpdateFrameSpriteList();
+                UpdateSpriteList3();
                 return TRUE;
             }
             case IDC_PASTE:
@@ -6802,7 +7058,7 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                     hColSet = NULL;
                 }
                 Choose_Color_Palette2(LOWORD(wParam));
-                //InvalidateRect(hwTB, NULL, TRUE);
+                InvalidateRect(hwTB2, NULL, TRUE);
                 return TRUE;
             }
             case IDC_DRAWPOINT:
@@ -6871,6 +7127,11 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                         }
                     }
                 }
+                return TRUE;
+            }
+            case IDC_SPRITELIST2:
+            {
+                UpdateSpriteList2();
                 return TRUE;
             }
         }
@@ -7849,7 +8110,7 @@ void UpdateMaskList2(void)
 {
     if (MycRom.name[0] == 0) return;
     HWND hlst = GetDlgItem(hwTB, IDC_MASKLIST2);
-    HWND hlst2= GetDlgItem(hwTB, IDC_FRUSEMASK);
+    HWND hlst2 = GetDlgItem(hwTB, IDC_FRUSEMASK);
     int acpos = (int)SendMessage(hlst, CB_GETCURSEL, 0, 0);
     SendMessage(hlst2, LB_RESETCONTENT, 0, 0);
     if (acpos >= 0)
@@ -7859,11 +8120,44 @@ void UpdateMaskList2(void)
             if (MycRom.CompMaskID[ti] == acpos)
             {
                 char tbuf[12];
-                _itoa_s(ti,tbuf,12,10);
+                _itoa_s(ti, tbuf, 12, 10);
                 SendMessageA(hlst2, LB_ADDSTRING, 0, (LPARAM)tbuf);
             }
         }
     }
+}
+
+void UpdateSpriteList2(void)
+{
+    if (MycRom.name[0] == 0) return;
+    HWND hlst = GetDlgItem(hwTB2, IDC_SPRITELIST2);
+    HWND hlst2 = GetDlgItem(hwTB2, IDC_FRUSESPRITE);
+    int acpos = (int)SendMessage(hlst, CB_GETCURSEL, 0, 0);
+    SendMessage(hlst2, LB_RESETCONTENT, 0, 0);
+    if (acpos >= 0)
+    {
+        for (UINT ti = 0; ti < MycRom.nFrames; ti++)
+        {
+            for (UINT tj = 0; tj < MAX_SPRITES_PER_FRAME; tj++)
+            {
+                if (MycRom.FrameSprites[ti * MAX_SPRITES_PER_FRAME + tj] == acpos)
+                {
+                    char tbuf[12];
+                    _itoa_s(ti, tbuf, 12, 10);
+                    SendMessageA(hlst2, LB_ADDSTRING, 0, (LPARAM)tbuf);
+                }
+            }
+        }
+    }
+}
+
+void UpdateSpriteList3(void)
+{
+    if (MycRom.name[0] == 0) return;
+    HWND hlst = GetDlgItem(hwTB2, IDC_SPRITELIST2);
+    SendMessage(hlst, CB_RESETCONTENT, 0, 0);
+    for (UINT ti = 0; ti < MycRom.nSprites; ti++) SendMessageA(hlst, CB_ADDSTRING, 0, (LPARAM)&MycRP.Sprite_Names[ti * SIZE_SECTION_NAMES]);
+    UpdateSpriteList2();
 }
 
 void UpdateMaskList(void)
@@ -7921,7 +8215,7 @@ bool CreateToolbar(void)
 {
     if (hwTB)
     {
-        if (functoremove == 1)
+/*       if (functoremove == 1)
         {
             RemoveWindowSubclass(hwTB, (SUBCLASSPROC)SubclassMaskListProc, 0);
             RemoveWindowSubclass(hwTB, (SUBCLASSPROC)SubclassSecListoProc, 1);
@@ -7931,7 +8225,7 @@ bool CreateToolbar(void)
         {
             RemoveWindowSubclass(hwTB, (SUBCLASSPROC)SubclassSecListcProc, 2);
             RemoveWindowSubclass(hwTB, (SUBCLASSPROC)SubclassSpriteList2Proc, 3);
-        }
+        }*/
         DestroyWindow(hwTB);
     }
     if (Edit_Mode == 0)
@@ -7990,13 +8284,13 @@ bool CreateToolbar(void)
             else SendMessage(GetDlgItem(hwTB, IDC_SHAPEMODE), BM_SETCHECK, BST_UNCHECKED, 0);
             CheckSameFrames();
         }
-        oldMaskListFunc = (WNDPROC)GetWindowLongPtr(GetDlgItem(hwTB, IDC_MASKLIST), GWLP_WNDPROC);
+        /*oldMaskListFunc = (WNDPROC)GetWindowLongPtr(GetDlgItem(hwTB, IDC_MASKLIST), GWLP_WNDPROC);
         SetWindowSubclass(GetDlgItem(hwTB, IDC_MASKLIST), (SUBCLASSPROC)SubclassMaskListProc, 0, 0);
         oldSectionListoFunc = (WNDPROC)GetWindowLongPtr(GetDlgItem(hwTB, IDC_SECTIONLIST), GWLP_WNDPROC);
         SetWindowSubclass(GetDlgItem(hwTB, IDC_SECTIONLIST), (SUBCLASSPROC)SubclassSecListoProc, 1, 0);
         oldMask2ListFunc = (WNDPROC)GetWindowLongPtr(GetDlgItem(hwTB, IDC_MASKLIST2), GWLP_WNDPROC);
         SetWindowSubclass(GetDlgItem(hwTB, IDC_MASKLIST2), (SUBCLASSPROC)SubclassMask2ListProc, 4, 0);
-        functoremove = 1;
+        functoremove = 1;*/
     }
     else
     {
@@ -8065,11 +8359,11 @@ bool CreateToolbar(void)
             UpdateFrameSpriteList();
         }
         SetSpotButton(Ident_Pushed);
-        oldSectionListcFunc = (WNDPROC)GetWindowLongPtr(GetDlgItem(hwTB, IDC_SECTIONLIST), GWLP_WNDPROC);
+        /*oldSectionListcFunc = (WNDPROC)GetWindowLongPtr(GetDlgItem(hwTB, IDC_SECTIONLIST), GWLP_WNDPROC);
         SetWindowSubclass(GetDlgItem(hwTB, IDC_SECTIONLIST), (SUBCLASSPROC)SubclassSecListcProc, 2, 0);
         oldSpriteList2Func = (WNDPROC)GetWindowLongPtr(GetDlgItem(hwTB, IDC_SPRITELIST2), GWLP_WNDPROC);
         SetWindowSubclass(GetDlgItem(hwTB, IDC_SPRITELIST2), (SUBCLASSPROC)SubclassSpriteList2Proc, 3, 0);
-        functoremove = 2;
+        functoremove = 2;*/
     }
     if (UndoAvailable > 0) EnableWindow(GetDlgItem(hwTB, IDC_UNDO), TRUE); else EnableWindow(GetDlgItem(hwTB, IDC_UNDO), FALSE);
     if (RedoAvailable > 0) EnableWindow(GetDlgItem(hwTB, IDC_REDO), TRUE); else EnableWindow(GetDlgItem(hwTB, IDC_REDO), FALSE);
@@ -8086,8 +8380,8 @@ bool CreateToolbar2(void)
 {
     if (hwTB2)
     {
-        RemoveWindowSubclass(hwTB2, (SUBCLASSPROC)SubclassSpriteListProc, 5);
-        RemoveWindowSubclass(hwTB2, (SUBCLASSPROC)SubclassSpriteDetListProc, 6);
+        /*RemoveWindowSubclass(hwTB2, (SUBCLASSPROC)SubclassSpriteListProc, 5);
+        RemoveWindowSubclass(hwTB2, (SUBCLASSPROC)SubclassSpriteDetListProc, 6);*/
         DestroyWindow(hwTB2);
     }
     hwTB2 = CreateDialog(hInst, MAKEINTRESOURCE(IDD_SPRDLG), hSprites, Toolbar_Proc2);
@@ -8123,12 +8417,14 @@ bool CreateToolbar2(void)
     SetWindowPos(GetDlgItem(hwTB2, IDC_STRY17), 0, 0, 0, 5, 100, SWP_NOMOVE | SWP_NOZORDER);
     SetWindowLong(GetDlgItem(hwTB2, IDC_STRY18), GWL_STYLE, WS_BORDER | WS_CHILD | WS_VISIBLE | SS_BLACKRECT);
     SetWindowPos(GetDlgItem(hwTB2, IDC_STRY18), 0, 0, 0, 5, 100, SWP_NOMOVE | SWP_NOZORDER);
+    SetWindowLong(GetDlgItem(hwTB2, IDC_STRY19), GWL_STYLE, WS_BORDER | WS_CHILD | WS_VISIBLE | SS_BLACKRECT);
+    SetWindowPos(GetDlgItem(hwTB2, IDC_STRY19), 0, 0, 0, 5, 100, SWP_NOMOVE | SWP_NOZORDER);
     if (UndoAvailable > 0) EnableWindow(GetDlgItem(hwTB2, IDC_UNDO), TRUE); else EnableWindow(GetDlgItem(hwTB2, IDC_UNDO), FALSE);
     if (RedoAvailable > 0) EnableWindow(GetDlgItem(hwTB2, IDC_REDO), TRUE); else EnableWindow(GetDlgItem(hwTB2, IDC_REDO), FALSE);
-    oldSpriteListFunc = (WNDPROC)GetWindowLongPtr(GetDlgItem(hwTB2, IDC_SPRITELIST), GWLP_WNDPROC);
+    /*oldSpriteListFunc = (WNDPROC)GetWindowLongPtr(GetDlgItem(hwTB2, IDC_SPRITELIST), GWLP_WNDPROC);
     SetWindowSubclass(GetDlgItem(hwTB2, IDC_SPRITELIST), (SUBCLASSPROC)SubclassSpriteListProc, 5, 0);
     oldSpriteDetListFunc = (WNDPROC)GetWindowLongPtr(GetDlgItem(hwTB2, IDC_DETSPR), GWLP_WNDPROC);
-    SetWindowSubclass(GetDlgItem(hwTB2, IDC_DETSPR), (SUBCLASSPROC)SubclassSpriteDetListProc, 6, 0);
+    SetWindowSubclass(GetDlgItem(hwTB2, IDC_DETSPR), (SUBCLASSPROC)SubclassSpriteDetListProc, 6, 0);*/
     char tbuf[8];
     SendMessage(GetDlgItem(hwTB2, IDC_DETSPR), CB_RESETCONTENT, 0, 0);
     for (int ti = 0; ti < MAX_SPRITE_DETECT_AREAS; ti++)
@@ -8139,6 +8435,7 @@ bool CreateToolbar2(void)
     SendMessage(GetDlgItem(hwTB2, IDC_DETSPR), CB_SETCURSEL, 0, 1);
     acDetSprite = 0;
     UpdateSpriteList();
+    UpdateSpriteList3();
     return true;
 }
  
@@ -8248,6 +8545,53 @@ bool glfwCreateCursorFromFile(char* rawfile,GLFWcursor** pcursor)
     return true;
 }
 
+HWND DoCreateStatusBar(HWND hwndParent, HINSTANCE  hinst)
+{
+    HWND hwndStatus;
+    RECT rcClient;
+    HLOCAL hloc;
+    PINT paParts;
+    int nWidth;
+
+    // Ensure that the common control DLL is loaded.
+    InitCommonControls();
+
+    // Create the status bar.
+    hwndStatus = CreateWindowEx(
+        0,                       // no extended styles
+        STATUSCLASSNAME,         // name of status bar class
+        (PCTSTR)NULL,           // no text when first created
+        WS_CHILD | WS_VISIBLE,   // creates a visible child window
+        0, 0, 0, 0,              // ignores size and position
+        hwndParent,              // handle to parent window
+        NULL,       // child window identifier
+        hinst,                   // handle to application instance
+        NULL);                   // no window creation data
+
+    // Get the coordinates of the parent window's client area.
+    GetClientRect(hwndParent, &rcClient);
+
+    // Allocate an array for holding the right edge coordinates.
+    hloc = LocalAlloc(LHND, sizeof(int));
+    paParts = (PINT)LocalLock(hloc);
+
+    // Calculate the right edge coordinate for each part, and
+    // copy the coordinates to the array.
+    nWidth = rcClient.right;
+    int rightEdge = nWidth;
+    paParts[0] = rightEdge;
+    rightEdge += nWidth;
+
+    // Tell the status bar to create the window parts.
+    SendMessage(hwndStatus, SB_SETPARTS, 0, (LPARAM)paParts);
+
+    // Free the array, and return.
+    LocalUnlock(hloc);
+    LocalFree(hloc);
+    statusBarHeight = GetSystemMetrics(SM_CYCAPTION) + 10;
+    return hwndStatus;
+}  
+
 #pragma endregion Window_Creations
 
 #pragma region Main
@@ -8332,6 +8676,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     }
     ShowWindow(hWnd, SW_SHOW);
     UpdateWindow(hWnd);
+    hStatus=DoCreateStatusBar(hWnd, hInst);
     hSprites = CreateWindow(szWindowClass2, L"Sprites", WS_OVERLAPPEDWINDOW | WS_SIZEBOX,
         CW_USEDEFAULT, CW_USEDEFAULT, 1480,900, nullptr, nullptr, hInstance, nullptr);
     if (!hSprites)
@@ -8341,18 +8686,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     }
     ShowWindow(hSprites, SW_SHOW);
     UpdateWindow(hSprites);
-/*    hBackgrounds = CreateWindow(szWindowClass2, L"Backgrounds", WS_CAPTION,
-        CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, nullptr, nullptr, hInstance, nullptr);
-    if (!hBackgrounds)
-    {
-        AffLastError((char*)"CreateWindow3");
-        return FALSE;
-    }
-    ShowWindow(hBackgrounds, SW_SHOW);
-    UpdateWindow(hBackgrounds);*/
-
-    //SetCursor(hcColPick);
-    //AffLastError((char*)"cur1");
+    hStatus2 = DoCreateStatusBar(hSprites, hInst);
+    LoadWindowPosition();
 
     WNDCLASSEX child;
     child.cbSize = sizeof(WNDCLASSEX);
@@ -8795,9 +9130,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             GetCursorPos(&tpt);
             if (((Mouse_Mode == 2) && (MycRP.Mask_Sel_Mode == 1)) || ((Mouse_Mode == 4) && (MycRP.Draw_Mode == 2)) ||
                 ((Mouse_Mode == 6) && (MycRP.Draw_Mode == 2)) || ((Mouse_Mode == 8) && (MycRP.Draw_Mode == 2)))
-                sprintf_s(tbuf, 256, "ColorizingDMD v%i.%i (by Zedrummer)     ROM name: %s      Frames: current %i / %i selected / %i total      Pos: (%i,%i)->(%i,%i)      @%.1fFPS", MAJ_VERSION, MIN_VERSION, MycRom.name, acFrame, nSelFrames, MycRom.nFrames, MouseIniPosx, MouseIniPosy, MouseFinPosx, MouseFinPosy, fps);
+                sprintf_s(tbuf, 256, "ColorizingDMD v%i.%i.%i (by Zedrummer)     ROM name: %s      Frames: current %i / %i selected / %i total      Pos: (%i,%i)->(%i,%i)      @%.1fFPS", MAJ_VERSION, MIN_VERSION, PATCH_VERSION, MycRom.name, acFrame, nSelFrames, MycRom.nFrames, MouseIniPosx, MouseIniPosy, MouseFinPosx, MouseFinPosy, fps);
             else
-                sprintf_s(tbuf, 256, "ColorizingDMD v%i.%i (by Zedrummer)     ROM name: %s      Frames: current %i / %i selected / %i total      Pos: (%i,%i)      @%.1fFPS", MAJ_VERSION, MIN_VERSION, MycRom.name, acFrame, nSelFrames, MycRom.nFrames, MouseFinPosx, MouseFinPosy, fps);
+                sprintf_s(tbuf, 256, "ColorizingDMD v%i.%i.%i (by Zedrummer)     ROM name: %s      Frames: current %i / %i selected / %i total      Pos: (%i,%i)      @%.1fFPS", MAJ_VERSION, MIN_VERSION, PATCH_VERSION, MycRom.name, acFrame, nSelFrames, MycRom.nFrames, MouseFinPosx, MouseFinPosy, fps);
             SetWindowTextA(hWnd, tbuf);
             glfwPollEvents();
         }
