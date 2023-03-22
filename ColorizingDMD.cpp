@@ -33,7 +33,7 @@ using namespace Gdiplus;
 #pragma region Global_Variables
 
 #define MAJ_VERSION 1
-#define MIN_VERSION 20
+#define MIN_VERSION 21
 #define PATCH_VERSION 0
 
 static TCHAR szWindowClass[] = _T("ColorizingDMD");
@@ -55,6 +55,7 @@ UINT Edit_Mode = 0; // 0- editing original frame, 1- editing colorized frame
 UINT Comparison_Mode = 0; // 0- no mask mode, 1- exclusion mask mode, 2- horizontal moving rectangle inclusion mask
 bool isLoadedProject = false; // is there a project loaded?
 HIMAGELIST g_hImageList = NULL, g_hImageListD = NULL;
+bool Night_Mode = false;
 
 char DumpDir[MAX_PATH] = "D:\\visual pinball\\VPinMame\\dmddump\\";
 bool Ask_for_SaveDir = true;
@@ -1226,21 +1227,21 @@ void Delete_Frame(UINT32 nofr)
         memcpy(&MycRom.TriggerID[nofr], &MycRom.TriggerID[nofr + 1], sizeof(UINT32) * nfrdecal);
         memcpy(&MycRP.FrameDuration[nofr], &MycRP.FrameDuration[nofr + 1], sizeof(UINT32) * nfrdecal);
     }
-    Del_Selection_Frame(nofr);
     for (UINT32 ti = 0; ti < nSelFrames; ti++)
     {
         if (SelFrames[ti] > nofr) SelFrames[ti]--;
     }
-    Del_Same_Frame(nofr);
+    Del_Selection_Frame(nofr);
     for (int ti = 0; ti < nSameFrames; ti++)
     {
         if (SameFrames[ti] > (int)nofr) SameFrames[ti]--;
     }
-    Del_Section_Frame(nofr);
+    Del_Same_Frame(nofr);
     for (int ti = 0; ti < (int)MycRP.nSections; ti++)
     {
         if (MycRP.Section_Firsts[ti] > (int)nofr) MycRP.Section_Firsts[ti]--;
     }
+    Del_Section_Frame(nofr);
     for (UINT ti = 0; ti < MycRom.nSprites; ti++)
     {
         if (MycRP.Sprite_Col_From_Frame[ti] > nofr) MycRP.Sprite_Col_From_Frame[ti]--;
@@ -1443,6 +1444,15 @@ void UpdateNewacFrame(void)
 }
 
 int isFrameSelected(UINT noFr)   // return -1 if the frame is not selected, the position in the selection list if already selected
+{
+    for (unsigned int ti = 0; ti < nSelFrames; ti++)
+    {
+        if (SelFrames[ti] == noFr) return (int)ti;
+    }
+    return -1;
+}
+
+int isFrameSelected3(UINT noFr)   // return -1 if the frame is not selected, the position in the selection list if already selected
 {
     if ((acFrame == noFr) && (nSelFrames > 0)) return -2;
     for (unsigned int ti = 0; ti < nSelFrames; ti++)
@@ -2609,7 +2619,7 @@ void Get_Frame_Strip_Line_Color(UINT pos)
     bool issel = false, isac = false;
     for (UINT ti = corframe; ti < cornextframe; ti++)
     {
-        int iFS = isFrameSelected(ti);
+        int iFS = isFrameSelected3(ti);
         if (iFS == -2) isac = true;
         if (iFS > -1) issel = true;
     }
@@ -5798,6 +5808,11 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
             }
             return TRUE;
         }
+        case WM_CTLCOLORDLG:
+        {
+            if (Night_Mode) return (INT_PTR)GetStockObject(DKGRAY_BRUSH);
+            return (INT_PTR)GetStockObject(GRAY_BRUSH);
+        }
         case WM_PAINT:
         {
             if (MycRom.name[0] == 0) return FALSE;
@@ -6679,6 +6694,29 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                     }
                     return TRUE;
                 }
+                case IDC_NIGHTDAY:
+                {
+                    HBRUSH brush;
+                    if (!Night_Mode)
+                    {
+                        brush = CreateSolidBrush(RGB(20, 20, 20));
+                        Night_Mode = true;
+                    }
+                    else
+                    {
+                        brush = CreateSolidBrush(RGB(240, 240, 240));
+                        Night_Mode = false;
+                    }
+                    SetClassLongPtr(hWnd, GCLP_HBRBACKGROUND, (LONG_PTR)brush);
+                    SetClassLongPtr(hwTB, GCLP_HBRBACKGROUND, (LONG_PTR)brush);
+                    SetClassLongPtr(hSprites, GCLP_HBRBACKGROUND, (LONG_PTR)brush);
+                    SetClassLongPtr(hwTB2, GCLP_HBRBACKGROUND, (LONG_PTR)brush);
+                    InvalidateRect(hWnd, NULL, TRUE);
+                    InvalidateRect(hwTB, NULL, TRUE);
+                    InvalidateRect(hSprites, NULL, TRUE);
+                    InvalidateRect(hwTB2, NULL, TRUE);
+                    return TRUE;
+                }
                 /*case IDC_ADDTID:
                 {
                     if (MycRom.name[0] == 0) return TRUE;
@@ -6827,6 +6865,11 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
         SetWindowSubclass(GetDlgItem(hDlg, IDC_DELDETSPR), ButtonSubclassProc2, 0, 0);
         SetWindowSubclass(GetDlgItem(hDlg, IDC_SPRITELIST2), ButtonSubclassProc2, 0, 0);
         SetWindowSubclass(GetDlgItem(hDlg, IDC_FRUSESPRITE), ButtonSubclassProc2, 0, 0);
+    }
+    case WM_CTLCOLORDLG:
+    {
+        if (Night_Mode) return (INT_PTR)GetStockObject(DKGRAY_BRUSH);
+        return (INT_PTR)GetStockObject(GRAY_BRUSH);
     }
     case WM_PAINT:
     {
@@ -8259,6 +8302,7 @@ bool CreateToolbar(void)
         //SetIcon(GetDlgItem(hwTB, IDC_SELSAMEFR), IDI_SELSAMEFR);
         SetIcon(GetDlgItem(hwTB, IDC_DELSAMEFR), IDI_DELSAMEFR);
         SetIcon(GetDlgItem(hwTB, IDC_MOVESECTION), IDI_MOVESECTION);
+        SetIcon(GetDlgItem(hwTB, IDC_NIGHTDAY), IDI_NIGHTDAY);
         SetWindowLong(GetDlgItem(hwTB, IDC_STRY), GWL_STYLE, WS_BORDER | WS_CHILD | WS_VISIBLE | SS_BLACKRECT);
         SetWindowPos(GetDlgItem(hwTB, IDC_STRY), 0, 0, 0, 5, 100, SWP_NOMOVE | SWP_NOZORDER);
         SetWindowLong(GetDlgItem(hwTB, IDC_STRY2), GWL_STYLE, WS_BORDER | WS_CHILD | WS_VISIBLE | SS_BLACKRECT);
@@ -8328,6 +8372,7 @@ bool CreateToolbar(void)
         SetIcon(GetDlgItem(hwTB, IDC_MOVESECTION), IDI_MOVESECTION);
         SetIcon(GetDlgItem(hwTB, IDC_ADDSPRITE2), IDI_ADDSPR);
         SetIcon(GetDlgItem(hwTB, IDC_DELSPRITE2), IDI_DELSPR);
+        SetIcon(GetDlgItem(hwTB, IDC_NIGHTDAY), IDI_NIGHTDAY);
         SendMessage(GetDlgItem(hwTB, IDC_CHANGECOLSET), UDM_SETRANGE, 0, MAKELPARAM(MAX_DYNA_SETS_PER_FRAME-1,0));
         SendMessage(GetDlgItem(hwTB, IDC_CHANGECOLSET), UDM_SETPOS, 0, (LPARAM)acDynaSet);
         char tbuf[10];

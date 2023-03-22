@@ -41,3 +41,5 @@ void UpdateFrameSpriteList(void);
 void UpdateTriggerID(void);
 bool MaskUsed(UINT32 nomask);
 LRESULT CALLBACK Filter_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam);
+void UpdateSpriteList2(void);
+void UpdateSpriteList3(void);
