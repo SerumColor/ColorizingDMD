@@ -3829,6 +3829,7 @@ void CompareAdditionalFrames(UINT nFrames, sFrames* pFrames)
             }
         }
     }
+    // calculate the hashes for the old frames
     UINT32* pnomaskhash = (UINT32*)malloc(sizeof(UINT32) * MycRom.nFrames);
     if (!pnomaskhash)
     {
@@ -3840,14 +3841,14 @@ void CompareAdditionalFrames(UINT nFrames, sFrames* pFrames)
         if (!(ti % 200)) Display_Avancement((float)ti / (float)(MycRom.nFrames - 1), 2, 4);
         if (MycRom.CompMaskID[ti] != 255)
         {
-            MycRom.HashCode[ti] = crc32_fast_mask(&MycRom.cFrames[MycRom.fWidth * MycRom.fHeight * ti], &MycRom.CompMasks[MycRom.CompMaskID[ti] * MycRom.fWidth * MycRom.fHeight], MycRom.fWidth * MycRom.fHeight, (BOOL)MycRom.ShapeCompMode[ti]);
-            pnomaskhash[ti] = crc32_fast(&MycRom.cFrames[MycRom.fWidth * MycRom.fHeight * ti], MycRom.fWidth * MycRom.fHeight, FALSE);
+            MycRom.HashCode[ti] = crc32_fast_mask(&MycRP.oFrames[MycRom.fWidth * MycRom.fHeight * ti], &MycRom.CompMasks[MycRom.CompMaskID[ti] * MycRom.fWidth * MycRom.fHeight], MycRom.fWidth * MycRom.fHeight, (BOOL)MycRom.ShapeCompMode[ti]);
+            pnomaskhash[ti] = crc32_fast(&MycRP.oFrames[MycRom.fWidth * MycRom.fHeight * ti], MycRom.fWidth * MycRom.fHeight, FALSE);
         }
         else
         {
-            MycRom.HashCode[ti] = crc32_fast(&MycRom.cFrames[MycRom.fWidth * MycRom.fHeight * ti], MycRom.fWidth * MycRom.fHeight, (BOOL)MycRom.ShapeCompMode[ti]);
+            MycRom.HashCode[ti] = crc32_fast(&MycRP.oFrames[MycRom.fWidth * MycRom.fHeight * ti], MycRom.fWidth * MycRom.fHeight, (BOOL)MycRom.ShapeCompMode[ti]);
             if (MycRom.ShapeCompMode[ti] == FALSE) pnomaskhash[ti] = MycRom.HashCode[ti];
-            else pnomaskhash[ti] = crc32_fast(&MycRom.cFrames[MycRom.fWidth * MycRom.fHeight * ti], MycRom.fWidth * MycRom.fHeight, FALSE);
+            else pnomaskhash[ti] = crc32_fast(&MycRP.oFrames[MycRom.fWidth * MycRom.fHeight * ti], MycRom.fWidth * MycRom.fHeight, FALSE);
         }
     }
     // then compare the new frames with the previous ones
@@ -3855,7 +3856,6 @@ void CompareAdditionalFrames(UINT nFrames, sFrames* pFrames)
     {
         if (pFrames[ti].active == FALSE) continue;
         if (!(ti % 200)) Display_Avancement((float)ti / (float)(nFrames - 1), 3, 4);
-        //on compare 2 frames ici
         UINT8 premask = 255;
         BOOL isshapemode = FALSE;
         UINT32 achash = crc32_fast((UINT8*)pFrames[ti].ptr, MycRom.fWidth * MycRom.fHeight, FALSE);
@@ -3895,7 +3895,7 @@ void CompareAdditionalFrames(UINT nFrames, sFrames* pFrames)
             }
             else
             {
-                if (pnomaskhash[ti] == pFrames[ti].hashcode)
+                if (pnomaskhash[tj] == pFrames[ti].hashcode)
                 {
                     pFrames[ti].active = FALSE;
                     nfrremsame++;
@@ -4002,7 +4002,7 @@ bool CopyTXTFrames2Frame(UINT nFrames, sFrames* pFrames)
     {
         for (UINT ti = 0; ti < MAX_DYNA_SETS_PER_FRAME; ti++)
         {
-            for (UINT tk = 0; tk < MycRom.noColors; tk++) MycRom.Dyna4Cols[tj * MAX_DYNA_SETS_PER_FRAME * MycRom.noColors + ti * MycRom.noColors + tk] = (UINT8)(ti * MycRom.noColors + tk);
+            for (UINT tk = 0; tk < MycRom.noColors; tk++) MycRom.Dyna4Cols[tj * MAX_DYNA_SETS_PER_FRAME * MycRom.noColors + ti * MycRom.noColors + tk] = (UINT8)((ti * MycRom.noColors + tk) % 64);
         }
     }
     MycRom.FrameSprites = (UINT8*)malloc(nF * MAX_SPRITES_PER_FRAME);
