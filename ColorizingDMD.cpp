@@ -34,7 +34,7 @@ using namespace Gdiplus;
 
 #define MAJ_VERSION 1
 #define MIN_VERSION 21
-#define PATCH_VERSION 0
+#define PATCH_VERSION 1
 
 static TCHAR szWindowClass[] = _T("ColorizingDMD");
 static TCHAR szWindowClass2[] = _T("ChildWin");
