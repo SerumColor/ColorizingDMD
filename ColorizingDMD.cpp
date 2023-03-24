@@ -34,7 +34,7 @@ using namespace Gdiplus;
 
 #define MAJ_VERSION 1
 #define MIN_VERSION 21
-#define PATCH_VERSION 1
+#define PATCH_VERSION 2
 
 static TCHAR szWindowClass[] = _T("ColorizingDMD");
 static TCHAR szWindowClass2[] = _T("ChildWin");
@@ -500,7 +500,10 @@ void SaveFrameSprites(bool isUndo)
 {
     // Save selected frame content for undo or redo action before drawing
     UINT8* pBuffer = SaveGetBuffer(isUndo);
-    memcpy(pBuffer, &MycRom.FrameSprites[acFrame * MAX_SPRITES_PER_FRAME], MAX_SPRITES_PER_FRAME);
+    for (UINT ti = 0; ti < nSelFrames; ti++)
+    {
+        memcpy(&pBuffer[ti * MAX_SPRITES_PER_FRAME], &MycRom.FrameSprites[SelFrames[ti] * MAX_SPRITES_PER_FRAME], MAX_SPRITES_PER_FRAME);
+    }
     SaveSetAction(isUndo, SA_FRAMESPRITES);
 }
 
@@ -508,7 +511,10 @@ void RecoverFrameSprites(bool isUndo)
 {
     // Undo or redo a saved frame before drawing
     UINT8* pBuffer = RecoverGetBuffer(isUndo);
-    memcpy(&MycRom.FrameSprites[acFrame * MAX_SPRITES_PER_FRAME], pBuffer, MAX_SPRITES_PER_FRAME);
+    for (UINT ti = 0; ti < nSelFrames; ti++)
+    {
+        memcpy(&MycRom.FrameSprites[SelFrames[ti] * MAX_SPRITES_PER_FRAME], &pBuffer[ti * MAX_SPRITES_PER_FRAME], MAX_SPRITES_PER_FRAME);
+    }
     RecoverAdjustAction(isUndo);
 }
 
@@ -6994,19 +7000,22 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             case IDC_ADDTOFRAME:
             {
                 if (MycRom.name[0] == 0) return TRUE;
-                for (UINT ti = 0; ti < MAX_SPRITES_PER_FRAME; ti++)
-                {
-                    if (MycRom.FrameSprites[acFrame * MAX_SPRITES_PER_FRAME + ti] == acSprite) return TRUE;
-                }
-                UINT ti = 0;
-                while ((MycRom.FrameSprites[acFrame * MAX_SPRITES_PER_FRAME + ti] != 255) && (ti < MAX_SPRITES_PER_FRAME)) ti++;
-                if (ti == MAX_SPRITES_PER_FRAME)
-                {
-                    MessageBoxA(hwTB2, "This frame has already reach the maximum number of sprites.", "Failed", MB_OK);
-                    return TRUE;
-                }
                 SaveAction(true, SA_FRAMESPRITES);
-                MycRom.FrameSprites[acFrame * MAX_SPRITES_PER_FRAME + ti] = acSprite;
+                for (UINT tj = 0; tj < nSelFrames; tj++)
+                {
+                    for (UINT ti = 0; ti < MAX_SPRITES_PER_FRAME; ti++)
+                    {
+                        if (MycRom.FrameSprites[SelFrames[tj] * MAX_SPRITES_PER_FRAME + ti] == acSprite) return TRUE;
+                    }
+                    UINT ti = 0;
+                    while ((MycRom.FrameSprites[SelFrames[tj] * MAX_SPRITES_PER_FRAME + ti] != 255) && (ti < MAX_SPRITES_PER_FRAME)) ti++;
+                    if (ti == MAX_SPRITES_PER_FRAME)
+                    {
+                        MessageBoxA(hwTB2, "One of the selected frames has already reach the maximum number of sprites.", "Failed", MB_OK);
+                        return TRUE;
+                    }
+                    MycRom.FrameSprites[SelFrames[tj] * MAX_SPRITES_PER_FRAME + ti] = acSprite;
+                }
                 UpdateFrameSpriteList();
                 UpdateSpriteList3();
                 return TRUE;
@@ -7756,12 +7765,15 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                             SaveAction(true, SA_DRAW);
                             Mouse_Mode = 3;
                             UINT8 col_to_find = MycRom.cFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ygrid * MycRom.fWidth + xgrid];
-                            for (UINT ti = 0; ti < MycRom.fWidth * MycRom.fHeight; ti++)
+                            for (UINT tj = 0; tj < nSelFrames; tj++)
                             {
-                                if (MycRom.cFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ti] == col_to_find)
+                                for (UINT ti = 0; ti < MycRom.fWidth * MycRom.fHeight; ti++)
                                 {
-                                    if (MycRP.DrawColMode == 1) MycRom.cFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ti] = acEditColors[MycRP.oFrames[acFrame * MycRom.fHeight * MycRom.fWidth + ti]];
-                                    else MycRom.cFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ti] = acEditColors[noColSel];
+                                    if (MycRom.cFrames[SelFrames[tj] * MycRom.fWidth * MycRom.fHeight + ti] == col_to_find)
+                                    {
+                                        if (MycRP.DrawColMode == 1) MycRom.cFrames[SelFrames[tj] * MycRom.fWidth * MycRom.fHeight + ti] = acEditColors[MycRP.oFrames[SelFrames[tj] * MycRom.fHeight * MycRom.fWidth + ti]];
+                                        else MycRom.cFrames[SelFrames[tj] * MycRom.fWidth * MycRom.fHeight + ti] = acEditColors[noColSel];
+                                    }
                                 }
                             }
                         }
