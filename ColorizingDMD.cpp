@@ -27,26 +27,31 @@ using namespace Gdiplus;
 #include <shlobj_core.h>
 #include <crtdbg.h>
 #include "LiteZip.h"
+#include <opencv2/opencv.hpp>
+using namespace cv;
+//#include <MagickWand/MagickWand.h>
 
 #pragma endregion Includes
 
 #pragma region Global_Variables
 
 #define MAJ_VERSION 1
-#define MIN_VERSION 21
-#define PATCH_VERSION 2
+#define MIN_VERSION 22
+#define PATCH_VERSION 0
 
 static TCHAR szWindowClass[] = _T("ColorizingDMD");
 static TCHAR szWindowClass2[] = _T("ChildWin");
+static TCHAR szWindowClass3[] = _T("Image");
 
 HINSTANCE hInst;                                // current instance
-HWND hWnd = NULL, hwTB = NULL, hwTB2 = NULL, hPal = NULL, hPal2 = NULL, hPal3 = NULL, hMovSec = NULL, hColSet = NULL, hSprites = NULL, hStatus = NULL, hStatus2 = NULL;
+HWND hWnd = NULL, hwTB = NULL, hwTB2 = NULL, hwTB3 = NULL, hPal = NULL, hPal2 = NULL, hPal3 = NULL, hMovSec = NULL, hColSet = NULL, hSprites = NULL, hImages=NULL, hStatus = NULL, hStatus2 = NULL, hStatus3 = NULL;
 UINT ColSetMode = 0, preColRot = 0, acColRot = 0; // 0- displaying colsets, 1- displaying colrots
-GLFWwindow * glfwframe, * glfwframestrip,*glfwsprites,*glfwspritestrip;	// handle+context of our window
+GLFWwindow * glfwframe, * glfwframestrip,*glfwsprites,*glfwspritestrip, * glfwimages;	// handle+context of our window
 bool fDone = false;
 HACCEL hAccelTable;
 bool Update_Toolbar = false; // Do we need to recreate toolbar?
 bool Update_Toolbar2 = false; // Do we need to recreate toolbar?
+UINT ScrWframe = 500, ScrHframe = 200; // Frame draw window dimensions
 
 UINT8 SelFrameColor = 0; // variables for changing color frames
 DWORD timeSelFrame = 0;
@@ -82,6 +87,21 @@ UINT TxCircle = (UINT) - 1; // LED imitation circle texture ID
 UINT TxFrameStrip[2] = { (UINT)-1, (UINT)-1 }; // Framebuffer texture for the strip displaying the frames ID
 UINT TxSpriteStrip[2] = { (UINT)-1, (UINT)-1 }; // Framebuffer texture for the strip displaying the sprites ID
 UINT TxChiffres, TxcRom; // Number texture ID
+UINT TxImage=NULL; // Image texture ID
+UINT width_image, height_image; // width and height of the loaded image
+UINT XSelection = 0, YSelection = 0, WSelection = 0, HSelection = 0; // size of the selection in the main window in LEDs
+float SelRatio = 1; // ratio WSelection/HSelection
+int crop_reduction = 0; // number of offset pixels of the crop frame in the the image window
+UINT initcropwidth = 120, initcropheight = 0; // size of the crop frame in original image size
+UINT crop_offsetx = 0, crop_offsety = 0; // offset of the crop frame in the image window
+UINT crop_sizeW = 0, crop_sizeH = 0; // size of the crop frame in the window
+UINT image_posx = 0, image_posy = 0; // position of the image in the image screen
+UINT image_sizeW = 10, image_sizeH = 10; // size of the image in the image screen
+bool image_mousepressed = false; // is button pressed on the image
+//char image_path[MAX_PATH] = { 0 }; // path of the image
+bool image_loaded = false; // is there an image loaded
+cv::Mat image_mat; // the image loaded
+unsigned char image_precolsel = 0, image_ncolsel = 1; // number of color selected in image mode
 UINT acFSText = 0; // current texture displayed on the frame strip
 UINT acSSText = 0; // current texture displayed on the sprite strip
 UINT8 Raw_Digit_Def[RAW_DIGIT_W * RAW_DIGIT_H * 10]; // buffer for raw numbers
@@ -91,6 +111,7 @@ UINT SliderWidth, PosSlider; // Width of the frame strip slider and pos of the s
 
 UINT ScrW, ScrH; // client size of the main window
 UINT ScrW2, ScrH2; // client size of the sprite window
+UINT ScrW3, ScrH3; // client size of the image window
 int MonWidth = 1920; // X resolution of the monitor
 
 int PreFrameInStrip = 0; // First frame to display in the frame strip
@@ -189,6 +210,8 @@ bool filter_time = false, filter_allmask = false, filter_color = false;
 int filter_length = 15, filter_ncolor = 16;
 
 int statusBarHeight;
+
+//sImage MyImage = { "",0,0,0.0f,0,0 };
 
 #pragma endregion Global_Variables
 
@@ -1055,6 +1078,7 @@ bool ColorPicker(UINT8* pRGB,LONG xm,LONG ym)
         int butid;
         if (noColMod < 16) butid = IDC_COL1 + noColMod; else butid = IDC_DYNACOL1 + noColMod - 16;
         Choose_Color_Palette(butid);
+        InvalidateRect(GetDlgItem(hwTB3, IDC_COLORS), NULL, FALSE);
         return true;
     }
     return false;
@@ -1374,6 +1398,7 @@ void Add_Surface_To_Copy(UINT8* Surface, bool isDel)
         Copy_Colo[ti] = MycRP.oFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ti];
         Copy_Dyna[ti] = MycRom.DynaMasks[acFrame * MycRom.fWidth * MycRom.fHeight + ti];
     }
+    GetSelectionSize(&XSelection, &YSelection, &WSelection, &HSelection);
 }
 
 void Add_Surface_To_Dyna(UINT8* Surface, bool isDel)
@@ -1657,7 +1682,7 @@ void Draw_Fill_Rectangle_Text(GLFWwindow* glfwin, int ix, int iy, int fx, int fy
 void Display_Avancement(float avanct, int step, int nsteps)
 {
     float avancement = (step + avanct) / nsteps;
-    Draw_Fill_Rectangle_Text(glfwframe, 0, 0, (int)(ScrW * avancement), ScrH, TxcRom, 0, avancement, 0, 2.15f);
+    Draw_Fill_Rectangle_Text(glfwframe, 0, 0, (int)(ScrWframe * avancement), ScrHframe, TxcRom, 0, avancement, 0, 1);
     gl33_SwapBuffers(glfwframe, false);
 }
 
@@ -2341,6 +2366,8 @@ void Calc_Resize_Frame(void)
         thei = frame_zoom * 32;
     }
     glfwSetWindowSize(glfwframe, twid, thei);
+    ScrWframe = twid;
+    ScrHframe = thei;
     offset_frame_x = (winrect.right - twid) / 2;
     offset_frame_y = TOOLBAR_HEIGHT + 10 + (winrect.bottom - (TOOLBAR_HEIGHT + 20) - thei - FRAME_STRIP_HEIGHT) / 2;
     glfwSetWindowPos(glfwframe, offset_frame_x, offset_frame_y);
@@ -2358,8 +2385,8 @@ void Calc_Resize_Sprite(void)
     GetClientRect(hSprites, &winrect);
     ScrW2 = winrect.right;
     ScrH2 = winrect.bottom;
-    NSpriteToDraw = (int)((float)(ScrW2 - FRAME_STRIP_W_MARGIN) / (float)(2* MAX_SPRITE_SIZE + FRAME_STRIP_W_MARGIN)); // Calculate the number of frames to display in the strip
-    SS_LMargin = (ScrW2 - (NSpriteToDraw * (FRAME_STRIP_W_MARGIN + 2* MAX_SPRITE_SIZE) + FRAME_STRIP_W_MARGIN)) / 2; // calculate the left and right margin in the strip
+    NSpriteToDraw = (int)((float)(ScrW2 - FRAME_STRIP_W_MARGIN) / (float)(2 * MAX_SPRITE_SIZE + FRAME_STRIP_W_MARGIN)); // Calculate the number of frames to display in the strip
+    SS_LMargin = (ScrW2 - (NSpriteToDraw * (FRAME_STRIP_W_MARGIN + 2 * MAX_SPRITE_SIZE) + FRAME_STRIP_W_MARGIN)) / 2; // calculate the left and right margin in the strip
     int thei = winrect.bottom - (TOOLBAR_HEIGHT + 20) - FRAME_STRIP_HEIGHT2 - statusBarHeight - 20;
     int twid = winrect.right;
     float mul = 2 + SPRITE_INTERVAL / (float)MAX_SPRITE_SIZE;
@@ -2381,6 +2408,18 @@ void Calc_Resize_Sprite(void)
     SetViewport(glfwspritestrip);
 }
 
+void Calc_Resize_Image(void)
+{
+    // Calculate the global variables depending on the main window dimension
+    glfwMakeContextCurrent(glfwimages);
+    RECT winrect;
+    GetClientRect(hImages, &winrect);
+    ScrW3 = winrect.right;
+    ScrH3 = winrect.bottom - (TOOLBAR_HEIGHT + 10) - statusBarHeight;
+    glfwSetWindowSize(glfwimages, ScrW3, ScrH3) ;
+    glfwSetWindowPos(glfwimages, 0, TOOLBAR_HEIGHT + 10);
+    SetViewport(glfwimages);
+}
 
 
 unsigned char RGBMask[3] = { 255,255,255 };
@@ -2990,6 +3029,122 @@ void Draw_Sprite(void)
     glEnd();
 }
 
+void CalcImageCropFrame()
+{
+    if (TxImage >= 0)
+    {
+        SelRatio = (float)WSelection / (float)HSelection;
+        if (SelRatio > (float)width_image / (float)height_image)
+        {
+            initcropwidth = width_image;
+            initcropheight = 0;
+        }
+        else
+        {
+            initcropwidth = 0;
+            initcropheight = height_image;
+        }
+    }
+}
+
+void GetSelectionSize(UINT* px, UINT* py, UINT* pw, UINT* ph)
+{
+    UINT xmax = 0, ymax = 0;
+    *px = MycRom.fWidth;
+    *py = MycRom.fHeight;
+    for (UINT tj = 0; tj < MycRom.fHeight; tj++)
+    {
+        for (UINT ti = 0; ti < MycRom.fWidth; ti++)
+        {
+            if (Copy_Mask[tj * MycRom.fWidth + ti] > 0)
+            {
+                if (ti < *px) *px = ti;
+                if (ti > xmax) xmax = ti;
+                if (tj < *py) *py = tj;
+                if (tj > ymax) ymax = tj;
+            }
+        }
+    }
+    *pw = xmax - *px + 1;
+    *ph = ymax - *py + 1;
+    crop_reduction = 0;
+    CalcImageCropFrame();
+}
+
+void Draw_Image(void)
+{
+    if (!TxImage) return;
+    glfwMakeContextCurrent(glfwimages);
+    glDisable(GL_BLEND);
+    glBindTexture(GL_TEXTURE_2D, TxImage);
+    glEnable(GL_TEXTURE_2D);
+    glBegin(GL_TRIANGLES);
+    glColor4f(1, 1, 1, 1);
+    glTexCoord2f(0, 0);
+    glVertex2i(image_posx, image_posy);
+    glTexCoord2f(1, 0);
+    glVertex2i(image_posx + image_sizeW - 1, image_posy);
+    glTexCoord2f(1, 1);
+    glVertex2i(image_posx + image_sizeW - 1, image_posy + image_sizeH - 1);
+    glTexCoord2f(0, 0);
+    glVertex2i(image_posx, image_posy);
+    glTexCoord2f(1, 1);
+    glVertex2i(image_posx + image_sizeW - 1, image_posy + image_sizeH - 1);
+    glTexCoord2f(0, 1);
+    glVertex2i(image_posx, image_posy + image_sizeH - 1);
+    glEnd();
+    if (TxImage >= 0)
+    {
+        glEnable(GL_BLEND);
+        glColor4f(0, 0, 0, 0.80f);
+        glDisable(GL_TEXTURE_2D);
+        glBegin(GL_TRIANGLES);
+        if (initcropwidth > 0)
+        {
+            crop_sizeW = image_sizeW - crop_reduction;
+            crop_sizeH = (UINT)(crop_sizeW / SelRatio);
+        }
+        else
+        {
+            crop_sizeH = image_sizeH - crop_reduction;
+            crop_sizeW = (UINT)(crop_sizeH * SelRatio);
+        }
+        if (crop_offsetx + crop_sizeW > image_sizeW) crop_offsetx = image_sizeW - crop_sizeW;
+        else if (crop_offsetx < 0) crop_offsetx = 0;
+        if (crop_offsety + crop_sizeH > image_sizeH) crop_offsety = image_sizeH - crop_sizeH;
+        else if (crop_offsety < 0) crop_offsety = 0;
+        glVertex2i(image_posx, image_posy);
+        glVertex2i(image_posx + crop_offsetx, image_posy);
+        glVertex2i(image_posx + crop_offsetx, image_posy + image_sizeH);
+        glVertex2i(image_posx, image_posy);
+        glVertex2i(image_posx + crop_offsetx, image_posy + image_sizeH);
+        glVertex2i(image_posx, image_posy + image_sizeH);
+
+        glVertex2i(image_posx + crop_offsetx + crop_sizeW, image_posy);
+        glVertex2i(image_posx + image_sizeW, image_posy);
+        glVertex2i(image_posx + image_sizeW, image_posy + image_sizeH);
+        glVertex2i(image_posx + crop_offsetx + crop_sizeW, image_posy);
+        glVertex2i(image_posx + image_sizeW, image_posy + image_sizeH);
+        glVertex2i(image_posx + crop_offsetx + crop_sizeW, image_posy + image_sizeH);
+
+        glVertex2i(image_posx + crop_offsetx, image_posy);
+        glVertex2i(image_posx + crop_offsetx + crop_sizeW, image_posy);
+        glVertex2i(image_posx + crop_offsetx + crop_sizeW, image_posy + crop_offsety);
+        glVertex2i(image_posx + crop_offsetx, image_posy);
+        glVertex2i(image_posx + crop_offsetx + crop_sizeW, image_posy + crop_offsety);
+        glVertex2i(image_posx + crop_offsetx, image_posy + crop_offsety);
+
+        glVertex2i(image_posx + crop_offsetx, image_posy + crop_offsety + crop_sizeH);
+        glVertex2i(image_posx + crop_offsetx + crop_sizeW, image_posy + crop_offsety + crop_sizeH);
+        glVertex2i(image_posx + crop_offsetx + crop_sizeW, image_posy + image_sizeH);
+        glVertex2i(image_posx + crop_offsetx, image_posy + crop_offsety + crop_sizeH);
+        glVertex2i(image_posx + crop_offsetx + crop_sizeW, image_posy + image_sizeH);
+        glVertex2i(image_posx + crop_offsetx, image_posy + image_sizeH);
+
+        glEnd();
+    }
+}
+
 #pragma endregion Window_Tools_And_Drawings
 
 #pragma region Project_File_Functions
@@ -3165,6 +3320,11 @@ void SaveWindowPosition(void)
         RegSetValueExA(tKey, "SPRITE_RIGHT", 0, REG_DWORD, (const BYTE*)&wp.rcNormalPosition.right, 4);
         RegSetValueExA(tKey, "SPRITE_TOP", 0, REG_DWORD, (const BYTE*)&wp.rcNormalPosition.top, 4);
         RegSetValueExA(tKey, "SPRITE_BOTTOM", 0, REG_DWORD, (const BYTE*)&wp.rcNormalPosition.bottom, 4);
+        GetWindowPlacement(hImages, &wp);
+        RegSetValueExA(tKey, "IMAGE_LEFT", 0, REG_DWORD, (const BYTE*)&wp.rcNormalPosition.left, 4);
+        RegSetValueExA(tKey, "IMAGE_RIGHT", 0, REG_DWORD, (const BYTE*)&wp.rcNormalPosition.right, 4);
+        RegSetValueExA(tKey, "IMAGE_TOP", 0, REG_DWORD, (const BYTE*)&wp.rcNormalPosition.top, 4);
+        RegSetValueExA(tKey, "IMAGE_BOTTOM", 0, REG_DWORD, (const BYTE*)&wp.rcNormalPosition.bottom, 4);
         RegCloseKey(tKey);
     }
 }
@@ -3173,26 +3333,35 @@ void LoadWindowPosition(void)
 {
     HKEY tKey;
     LSTATUS ls = RegOpenKeyExA(HKEY_CURRENT_USER, "SOFTWARE\\ColorizingDMD",0,KEY_READ,&tKey);
+    int posxm = 0, posym = 0, widm = 500, heim = 500;
+    int posxs = 500, posys = 0, wids = 500, heis = 500;
+    int posxi = 250, posyi = 500, widi = 500, heii = 500;
     if (ls == ERROR_SUCCESS)
     {
-        int posx, posy, wid, hei;
         DWORD size = 4;
-        RegGetValueA(tKey, NULL, "SPRITE_LEFT", RRF_RT_REG_DWORD, 0, &posx, &size);
-        RegGetValueA(tKey, NULL, "SPRITE_TOP", RRF_RT_REG_DWORD, 0, &posy, &size);
-        RegGetValueA(tKey, NULL, "SPRITE_RIGHT", RRF_RT_REG_DWORD, 0, &wid, &size);
-        wid -= posx - 1;
-        RegGetValueA(tKey, NULL, "SPRITE_BOTTOM", RRF_RT_REG_DWORD, 0, &hei, &size);
-        hei -= posy - 1;
-        SetWindowPos(hSprites, HWND_TOP, posx, posy, wid, hei, SWP_SHOWWINDOW);
-        RegGetValueA(tKey, NULL, "MAIN_LEFT", RRF_RT_REG_DWORD, 0, &posx, &size);
-        RegGetValueA(tKey, NULL, "MAIN_TOP", RRF_RT_REG_DWORD, 0, &posy, &size);
-        RegGetValueA(tKey, NULL, "MAIN_RIGHT", RRF_RT_REG_DWORD, 0, &wid, &size);
-        wid -= posx - 1;
-        RegGetValueA(tKey, NULL, "MAIN_BOTTOM", RRF_RT_REG_DWORD, 0, &hei, &size);
-        hei -= posy - 1;
-        SetWindowPos(hWnd, HWND_TOP, posx, posy, wid, hei, SWP_SHOWWINDOW);
+        RegGetValueA(tKey, NULL, "IMAGE_LEFT", RRF_RT_REG_DWORD, 0, &posxm, &size);
+        RegGetValueA(tKey, NULL, "IMAGE_TOP", RRF_RT_REG_DWORD, 0, &posym, &size);
+        RegGetValueA(tKey, NULL, "IMAGE_RIGHT", RRF_RT_REG_DWORD, 0, &widm, &size);
+        widm -= posxm - 1;
+        RegGetValueA(tKey, NULL, "IMAGE_BOTTOM", RRF_RT_REG_DWORD, 0, &heim, &size);
+        heim -= posym - 1;
+        RegGetValueA(tKey, NULL, "SPRITE_LEFT", RRF_RT_REG_DWORD, 0, &posxs, &size);
+        RegGetValueA(tKey, NULL, "SPRITE_TOP", RRF_RT_REG_DWORD, 0, &posys, &size);
+        RegGetValueA(tKey, NULL, "SPRITE_RIGHT", RRF_RT_REG_DWORD, 0, &wids, &size);
+        wids -= posxs - 1;
+        RegGetValueA(tKey, NULL, "SPRITE_BOTTOM", RRF_RT_REG_DWORD, 0, &heis, &size);
+        heis -= posys - 1;
+        RegGetValueA(tKey, NULL, "MAIN_LEFT", RRF_RT_REG_DWORD, 0, &posxi, &size);
+        RegGetValueA(tKey, NULL, "MAIN_TOP", RRF_RT_REG_DWORD, 0, &posyi, &size);
+        RegGetValueA(tKey, NULL, "MAIN_RIGHT", RRF_RT_REG_DWORD, 0, &widi, &size);
+        widi -= posxi - 1;
+        RegGetValueA(tKey, NULL, "MAIN_BOTTOM", RRF_RT_REG_DWORD, 0, &heii, &size);
+        heii -= posyi - 1;
         RegCloseKey(tKey);
     }
+    SetWindowPos(hImages, HWND_TOP, posxm, posym, widm, heim, SWP_SHOWWINDOW);
+    SetWindowPos(hSprites, HWND_TOP, posxs, posys, wids, heis, SWP_SHOWWINDOW);
+    SetWindowPos(hWnd, HWND_TOP, posxi, posyi, widi, heii, SWP_SHOWWINDOW);
 }
 
 bool ColorizedFrame(UINT nofr)
@@ -4821,6 +4990,7 @@ LRESULT CALLBACK PalProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
             }
         }
         EndPaint(hWin, &ps);
+        ReleaseDC(hWin, hdc);
         break;
     }
     case WM_LBUTTONDOWN:
@@ -5133,6 +5303,61 @@ LRESULT CALLBACK WndProc2(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
         GetWindowRect(hStatus2, &rcStatusBar);
         int statusBarHeight = rcStatusBar.bottom - rcStatusBar.top;
         MoveWindow(hStatus2, 0, cyClient - statusBarHeight, cxClient, statusBarHeight, TRUE);
+        break;
+    } // no "break" here as the code in WM_MOVE is common
+    case WM_CLOSE:
+    {
+        if (MessageBoxA(hWin, "Confirm you want to exit?", "Confirm", MB_YESNO) == IDYES)
+        {
+            SaveWindowPosition();
+            DestroyWindow(hWin);
+        }
+        break;
+    }
+    case WM_DESTROY:
+    {
+        PostQuitMessage(0);
+        fDone = true;
+        break;
+    }
+    default:
+        return DefWindowProc(hWin, message, wParam, lParam);
+    }
+    return 0;
+}
+
+LRESULT CALLBACK WndProc3(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    switch (message)
+    {
+    case WM_SIZE:
+    {
+        if (!IsIconic(hWin)) Calc_Resize_Image();
+        int cxClient = LOWORD(lParam);
+        int cyClient = HIWORD(lParam);
+        // Resize the status bar to fit the new client area width
+        SendMessage(hStatus3, WM_SIZE, 0, MAKELPARAM(cxClient, cyClient));
+        // Position the status bar at the bottom of the window
+        RECT rcStatusBar;
+        GetWindowRect(hStatus3, &rcStatusBar);
+        int statusBarHeight = rcStatusBar.bottom - rcStatusBar.top;
+        MoveWindow(hStatus3, 0, cyClient - statusBarHeight, cxClient, statusBarHeight, TRUE);
+        float imgratio = (float)width_image / (float)height_image;
+        //UINT width, height, x, y;
+        if (imgratio > (float)ScrW3 / (float)ScrH3)
+        {
+            image_sizeW = ScrW3;
+            image_sizeH = (UINT)((float)image_sizeW / imgratio);
+        }
+        else
+        {
+            image_sizeH = ScrH3;
+            image_sizeW = (UINT)((float)image_sizeH * imgratio);
+        }
+        image_posx = (ScrW3 - image_sizeW) / 2;
+        image_posy = (ScrH3 - image_sizeH) / 2;
+        crop_reduction = 0;
+        GetSelectionSize(&XSelection, &YSelection, &WSelection, &HSelection);
         break;
     } // no "break" here as the code in WM_MOVE is common
     case WM_CLOSE:
@@ -6590,27 +6815,33 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 case IDC_ADDSPRITE2:
                 {
                     if (MycRom.name[0] == 0) return TRUE;
-                    if (MycRom.nSprites == 0) return TRUE;
-                    for (UINT ti = 0; ti < MAX_SPRITES_PER_FRAME; ti++)
-                    {
-                        if (MycRom.FrameSprites[acFrame * MAX_SPRITES_PER_FRAME + ti] == acSprite) return TRUE;
-                    }
-                    UINT ti = 0;
-                    while ((MycRom.FrameSprites[acFrame * MAX_SPRITES_PER_FRAME + ti] != 255) && (ti < MAX_SPRITES_PER_FRAME)) ti++;
-                    if (ti == MAX_SPRITES_PER_FRAME)
-                    {
-                        MessageBoxA(hwTB2, "This frame has already reached the maximum number of sprites.", "Failed", MB_OK);
-                        return TRUE;
-                    }
                     SaveAction(true, SA_FRAMESPRITES);
-                    MycRom.FrameSprites[acFrame * MAX_SPRITES_PER_FRAME + ti] = acSprite;
+                    int notodisplay = 0;
+                    for (UINT tj = 0; tj < nSelFrames; tj++)
+                    {
+                        for (UINT ti = 0; ti < MAX_SPRITES_PER_FRAME; ti++)
+                        {
+                            if (MycRom.FrameSprites[SelFrames[tj] * MAX_SPRITES_PER_FRAME + ti] == acSprite) return TRUE;
+                        }
+                        UINT ti = 0;
+                        while ((MycRom.FrameSprites[SelFrames[tj] * MAX_SPRITES_PER_FRAME + ti] != 255) && (ti < MAX_SPRITES_PER_FRAME)) ti++;
+                        if (ti == MAX_SPRITES_PER_FRAME)
+                        {
+                            MessageBoxA(hwTB2, "One of the selected frames has already reach the maximum number of sprites.", "Failed", MB_OK);
+                        }
+                        else
+                        {
+                            MycRom.FrameSprites[SelFrames[tj] * MAX_SPRITES_PER_FRAME + ti] = acSprite;
+                            if (SelFrames[tj] == acFrame) notodisplay = ti;
+                        }
+                    }
                     UpdateFrameSpriteList();
                     UpdateSpriteList3();
+                    SendMessage(GetDlgItem(hwTB, IDC_SPRITELIST2), CB_SETCURSEL, notodisplay, 0);
                     return TRUE;
                 }
                 case IDC_DELSPRITE2:
                 {
-                    SaveAction(true, SA_FRAMESPRITES);
                     int acpos = (int)SendMessage(GetDlgItem(hwTB, IDC_SPRITELIST2), CB_GETCURSEL, 0, 0);
                     if (acpos == -1) return TRUE;
                     SaveAction(true, SA_FRAMESPRITES);
@@ -6622,7 +6853,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 case IDC_COLROT:
                 {
                     if (MycRom.name[0] == 0) return TRUE;
-                    SaveAction(true, SA_FRAMESPRITES);
+                    //SaveAction(true, SA_FRAMESPRITES);
                     if (hPal)
                     {
                         DestroyWindow(hPal);
@@ -6717,32 +6948,16 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                     SetClassLongPtr(hwTB, GCLP_HBRBACKGROUND, (LONG_PTR)brush);
                     SetClassLongPtr(hSprites, GCLP_HBRBACKGROUND, (LONG_PTR)brush);
                     SetClassLongPtr(hwTB2, GCLP_HBRBACKGROUND, (LONG_PTR)brush);
+                    SetClassLongPtr(hImages, GCLP_HBRBACKGROUND, (LONG_PTR)brush);
+                    SetClassLongPtr(hwTB3, GCLP_HBRBACKGROUND, (LONG_PTR)brush);
                     InvalidateRect(hWnd, NULL, TRUE);
                     InvalidateRect(hwTB, NULL, TRUE);
                     InvalidateRect(hSprites, NULL, TRUE);
                     InvalidateRect(hwTB2, NULL, TRUE);
+                    InvalidateRect(hImages, NULL, TRUE);
+                    InvalidateRect(hwTB3, NULL, TRUE);
                     return TRUE;
                 }
-                /*case IDC_ADDTID:
-                {
-                    if (MycRom.name[0] == 0) return TRUE;
-                    if (MycRom.TriggerID[acFrame] != 0xFFFFFFFF) return TRUE;
-                    UINT32 ti = 0;
-                    bool tidfound = false;
-                    while (!tidfound)
-                    {
-                        UINT32 tj;
-                        for (tj = 0; tj < MycRom.nFrames; tj++)
-                        {
-                            if (ti == MycRom.TriggerID[tj]) break;
-                        }
-                        if (tj == MycRom.nFrames) tidfound = true;
-                        else ti++;
-                    }
-                    MycRom.TriggerID[acFrame] = ti;
-                    UpdateTriggerID();
-                    return TRUE;
-                }*/
             }
             break;
         }
@@ -7001,6 +7216,7 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             {
                 if (MycRom.name[0] == 0) return TRUE;
                 SaveAction(true, SA_FRAMESPRITES);
+                int notodisplay = 0;
                 for (UINT tj = 0; tj < nSelFrames; tj++)
                 {
                     for (UINT ti = 0; ti < MAX_SPRITES_PER_FRAME; ti++)
@@ -7012,12 +7228,16 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                     if (ti == MAX_SPRITES_PER_FRAME)
                     {
                         MessageBoxA(hwTB2, "One of the selected frames has already reach the maximum number of sprites.", "Failed", MB_OK);
-                        return TRUE;
                     }
-                    MycRom.FrameSprites[SelFrames[tj] * MAX_SPRITES_PER_FRAME + ti] = acSprite;
+                    else
+                    {
+                        MycRom.FrameSprites[SelFrames[tj] * MAX_SPRITES_PER_FRAME + ti] = acSprite;
+                        if (SelFrames[tj] == acFrame) notodisplay = ti;
+                    }
                 }
                 UpdateFrameSpriteList();
                 UpdateSpriteList3();
+                SendMessage(GetDlgItem(hwTB, IDC_SPRITELIST2), CB_SETCURSEL, notodisplay, 0);
                 return TRUE;
             }
             case IDC_PASTE:
@@ -7189,6 +7409,582 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
         }
         return (INT_PTR)FALSE;
     }
+    }
+    return (INT_PTR)FALSE;
+}
+
+const char* ButtonDescription3(HWND hOver)
+{
+    if (hOver == GetDlgItem(hwTB3, IDC_BROWSEIMAGE)) return (const char*)"Open an image file (CTRL+O)";
+    if (hOver == GetDlgItem(hwTB3, IDC_CBPASTE)) return (const char*)"Use an image file from the clipboard (CTRL+V)";
+    //if (hOver == GetDlgItem(hwTB3, IDC_DELIMAGE)) return (const char*)"Delete the image resource";
+    if (hOver == GetDlgItem(hwTB3, IDC_COPY)) return (const char*)"Copy this image to the frame selection (CTRL+C)";
+    if (hOver == GetDlgItem(hwTB3, IDC_ZOOMIN)) return (const char*)"Zoom in the image (MOUSE WHEEL UP)";
+    if (hOver == GetDlgItem(hwTB3, IDC_ZOOMOUT)) return (const char*)"Zoom out in the image (MOUSE WHEEL DOWN)";
+    if (hOver == GetDlgItem(hwTB3, IDC_COLORS)) return (const char*)"Choose the colors in the frame palette to copy the image colors to";
+    return "";
+}
+
+LRESULT CALLBACK ButtonSubclassProc3(HWND hBut, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+    switch (message) {
+    case WM_KEYDOWN:
+    {
+        return TRUE;
+    }
+    case WM_MOUSEMOVE:
+    {
+        TRACKMOUSEEVENT tme;
+        tme.cbSize = sizeof(TRACKMOUSEEVENT);
+        tme.dwFlags = TME_LEAVE;
+        tme.hwndTrack = hBut;
+        tme.dwHoverTime = HOVER_DEFAULT;
+        TrackMouseEvent(&tme);
+        SetWindowTextA(hStatus3, ButtonDescription3(hBut));
+        break;
+    }
+    case WM_MOUSELEAVE:
+    {
+        // The mouse has left the button
+        SetWindowTextA(hStatus3, "");
+        break;
+    }
+    }
+
+    // Call the default button window procedure for any unhandled messages
+    return DefSubclassProc(hBut, message, wParam, lParam);
+}
+
+UINT CreateTextureFromImage(char* filename, UINT* width, UINT* height)
+{
+    cv::Mat mat = cv::imread(filename);
+    if (mat.empty()) return (UINT)-1;
+    if (mat.cols % 4 != 0)
+    {
+        float ratio = (float)mat.cols / (float)mat.rows;
+        int cols = mat.cols - (mat.cols % 4) + 4; // we align to the multiple of 4 above
+        int rows = (int)((float)cols / ratio);
+        cv::Mat tmat;
+        resize(mat, tmat, cv::Size(cols, rows), 0, 0, cv::INTER_CUBIC);
+        mat.release();
+        mat = tmat;
+    }
+    // Create an OpenGL texture
+    GLuint texture;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_RECTANGLE, texture);
+
+    // Determine the format and type of the pixel data based on the cv::Mat
+    GLenum format;
+    GLenum iformat;
+    GLenum type;
+    switch (mat.channels())
+    {
+    case 3:
+        format = GL_RGB;
+        iformat = GL_BGR;
+        image_mat = mat;
+        break;
+    case 4:
+        format = GL_RGB;
+        iformat = GL_BGR;
+        cvtColor(mat, image_mat, COLOR_BGRA2BGR);
+        mat.release();
+        break;
+    default:
+        std::cerr << "Unsupported number of channels: " << image_mat.channels() << std::endl;
+        return (UINT)-1;
+    }
+    switch (mat.depth())
+    {
+    case CV_8U:
+        type = GL_UNSIGNED_BYTE;
+        break;
+    default:
+        std::cerr << "Unsupported data type: " << image_mat.depth() << std::endl;
+        return (UINT)-1;
+    }
+    *width = mat.cols;
+    *height = mat.rows;
+    // Set texture parameters
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    // Upload the pixel data to the texture
+    glTexImage2D(GL_TEXTURE_2D, 0, format, image_mat.cols, image_mat.rows, 0, iformat, type, image_mat.ptr());
+
+    image_loaded = true;
+    return texture;
+}
+
+void ReduceRGB24ToNColorsImage(cv::Mat image, unsigned int ncolors, unsigned char* palette, unsigned char* dimage)//, unsigned char* palette, unsigned char* Image)
+{
+    if (image.type() != CV_8UC3)
+    {
+        MessageBoxA(hImages, "The image is not in the right format, can't reduce it", "Error", MB_OK);
+        return;
+    }
+    // Cluster
+
+    int h = image.rows;
+    int w = image.cols;
+    Mat samples(h * w, 3, CV_32F);
+    int count = 0;
+
+    for (int x = 0; x < h; x++)
+    {
+        for (int y = 0; y < w; y++)
+        {
+            samples.at<float>(count, 0) = image.at<Vec3b>(x, y)[0];
+            samples.at<float>(count, 1) = image.at<Vec3b>(x, y)[1];
+            samples.at<float>(count, 2) = image.at<Vec3b>(x, y)[2];
+            count++;
+        }
+    }
+
+    Mat labels, centers;
+    kmeans(samples, ncolors, labels, TermCriteria(TermCriteria::EPS + TermCriteria::MAX_ITER, 10000, 0.0001), 1, KMEANS_RANDOM_CENTERS, centers);
+
+    centers.convertTo(centers, CV_8U);
+    Mat res(image.size(), image.type());
+    for (int i = 0; i < h; ++i) 
+    {
+        for (int j = 0; j < w; ++j) 
+        {
+            int label = labels.at<int>(i * image.cols + j);
+            res.at<Vec3b>(i, j) = centers.row(label);
+        }
+    }
+    samples.release();
+    centers.release();
+
+    //imshow("result", res);
+
+    cv::Vec3b tpalette[64];
+    int ncol = 0;
+
+    // Find the n unique colors in the source image
+    for (int i = 0; i < h; i++)
+    {
+        for (int j = 0; j < w; j++) 
+        {
+            cv::Vec3b color = res.at<cv::Vec3b>(i, j);
+            bool found = false;
+            for (int k = 0; k < ncol; k++)
+            {
+                if (color == tpalette[k])
+                {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+            {
+                if (ncol == ncolors)
+                {
+                    break;
+                }
+                tpalette[ncol++] = color;
+            }
+        }
+        if (ncol == ncolors) 
+        {
+            break;
+        }
+    }
+    // Fill palette
+    UINT idx = 0;
+    for (int ti = 0; ti < ncol;ti++)
+    {
+        palette[idx++] = tpalette[ti][2];
+        palette[idx++] = tpalette[ti][1];
+        palette[idx++] = tpalette[ti][0];
+        if (idx >= ncolors * 3) break;
+    }
+
+    // Fill index
+    idx = 0;
+    for (int y = 0; y < h; y++)
+    {
+        for (int x = 0; x < w; x++)
+        {
+            cv::Vec3b color = res.at<cv::Vec3b>(y, x);
+            for (UINT i = 0; i < ncolors; i++)
+            {
+                dimage[idx] = 0;
+                if (color == tpalette[i])
+                {
+                    dimage[idx++] = i;
+                    break;
+                }
+            }
+        }
+    }
+    res.release();
+}
+
+void CopyImageToSelection(UINT8* palette, UINT8* image)
+{
+    for (UINT tk = 0; tk < nSelFrames; tk++)
+    {
+        for (UINT ti = 0; ti < (UINT)(image_ncolsel * 3); ti++)
+        {
+            MycRom.cPal[SelFrames[tk] * 3 * MycRom.ncColors + ti + image_precolsel * 3] = palette[ti];
+        }
+        for (UINT tj = 0; tj < HSelection; tj++)
+        {
+            for (UINT ti = 0; ti < WSelection; ti++)
+            {
+                if (Copy_Mask[(tj + YSelection) * MycRom.fWidth + ti + XSelection] > 0)
+                {
+                    MycRom.cFrames[SelFrames[tk] * MycRom.fWidth * MycRom.fHeight + (tj + YSelection) * MycRom.fWidth + ti + XSelection] = image_precolsel + image[tj * WSelection + ti];
+                }
+            }
+        }
+    }
+}
+
+cv::Mat Create24bcvMatFrom32bBitmap(HBITMAP hbmp)
+{
+    BITMAP bm;
+    GetObject(hbmp, sizeof(bm), &bm);
+
+    BITMAPINFO bmi = { 0 };
+    bmi.bmiHeader.biSize = sizeof(bmi.bmiHeader);
+    bmi.bmiHeader.biWidth = bm.bmWidth;
+    bmi.bmiHeader.biHeight = bm.bmHeight;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+
+    void* pPixels = nullptr;
+    HDC hDC = CreateCompatibleDC(nullptr);
+    HBITMAP hDib = CreateDIBSection(hDC, &bmi, DIB_RGB_COLORS, &pPixels, nullptr, 0);
+    DeleteDC(hDC);
+
+    HDC hMemDC = CreateCompatibleDC(nullptr);
+    SelectObject(hMemDC, hDib);
+    GetDIBits(hMemDC, hbmp, 0, bm.bmHeight, pPixels, &bmi, DIB_RGB_COLORS);
+    DeleteDC(hMemDC);
+
+    cv::Mat mat(bm.bmHeight, bm.bmWidth, CV_8UC3);
+    unsigned char* pDest = mat.data;
+    unsigned char* pSrc = static_cast<unsigned char*>(pPixels);
+
+    for (int y = 0; y < bm.bmHeight; ++y) {
+        for (int x = 0; x < bm.bmWidth; ++x) {
+            pDest[(y * bm.bmWidth + x) * 3 + 0] = pSrc[((bm.bmHeight - 1 - y) * bm.bmWidth + x) * 4 + 0];
+            pDest[(y * bm.bmWidth + x) * 3 + 1] = pSrc[((bm.bmHeight - 1 - y) * bm.bmWidth + x) * 4 + 1];
+            pDest[(y * bm.bmWidth + x) * 3 + 2] = pSrc[((bm.bmHeight - 1 - y) * bm.bmWidth + x) * 4 + 2];
+        }
+    }
+    DeleteObject(hDib);
+    return mat;
+}
+
+GLuint CreateTextureFromClipboard(UINT* pw, UINT* ph)
+{
+    if (!IsClipboardFormatAvailable(CF_BITMAP))
+    {
+        MessageBoxA(hImages, "No image in clipboard available", "Failed", MB_OK);
+        return (GLuint)-1;
+    }
+    if (!OpenClipboard(NULL))
+    {
+        MessageBoxA(hImages, "Failed to open clipboard", "Failed", MB_OK);
+        return (GLuint)-1;
+    }
+    HBITMAP hBmp = (HBITMAP)GetClipboardData(CF_BITMAP);
+    if (hBmp == NULL)
+    {
+        MessageBoxA(hImages, "Failed to get bitmap data from clipboard", "Failed", MB_OK);
+        CloseClipboard();
+        return (GLuint)-1;
+    }
+    BITMAP bm;
+    GetObject(hBmp, sizeof(BITMAP), &bm);
+    if (bm.bmWidth % 4 != 0)
+    {
+        float ratio = (float)bm.bmWidth / (float)bm.bmHeight;
+        int cols = bm.bmWidth - (bm.bmWidth % 4) + 4; // we align to the multiple of 4 above
+        int rows = (int)((float)cols / ratio);
+        HDC hdc = GetDC(NULL);
+        HDC hdcOrig = CreateCompatibleDC(hdc);
+        HDC hdcNew = CreateCompatibleDC(hdc);
+        HBITMAP hNewBmp = CreateCompatibleBitmap(hdc, cols, rows);
+        SelectObject(hdcOrig, hBmp);
+        SelectObject(hdcNew, hNewBmp);
+        StretchBlt(hdcNew, 0, 0, cols, rows, hdcOrig, 0, 0, bm.bmWidth, bm.bmHeight, SRCCOPY);
+        DeleteDC(hdcOrig);
+        DeleteDC(hdcNew);
+        ReleaseDC(NULL, hdc);
+        DeleteObject(hBmp);
+        hBmp = hNewBmp;
+    }
+    GetObject(hBmp, sizeof(BITMAP), &bm);
+    *pw = bm.bmWidth;
+    *ph = bm.bmHeight;
+    int iformat, format;
+    if (bm.bmBitsPixel == 32)
+    {
+        format = GL_RGBA;
+        iformat = GL_BGRA;
+        image_mat = Create24bcvMatFrom32bBitmap(hBmp);
+        //imshow("result",image_mat);
+    }
+    else if (bm.bmBitsPixel == 24)
+    {
+        format = GL_RGB;
+        iformat = GL_BGR;
+        image_mat.create(*ph, *pw, CV_8UC3);
+        BITMAPINFOHEADER bi = { sizeof(bi), bm.bmWidthBytes, -bm.bmHeight, 1, 24, BI_RGB };
+        HDC hdc = GetDC(hImages);
+        GetDIBits(hdc, hBmp, 0, bm.bmHeight, image_mat.data, (BITMAPINFO*)&bi, DIB_RGB_COLORS);
+        ReleaseDC(hImages, hdc);
+    }
+    else
+    {
+        MessageBoxA(hImages, "Unknock image format in the clipboard", "Failed", MB_OK);
+        CloseClipboard();
+        return (UINT) -1;
+    }
+    LPVOID lpBitmap = (LPVOID)malloc(bm.bmHeight * bm.bmWidthBytes * bm.bmBitsPixel / 8);
+    if (!lpBitmap) return (UINT)-1;
+    GetBitmapBits(hBmp, bm.bmHeight * bm.bmWidthBytes * bm.bmBitsPixel / 8, lpBitmap);
+    GLuint textureID;
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_2D, textureID);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, format, bm.bmWidth , bm.bmHeight , 0, iformat, GL_UNSIGNED_BYTE, lpBitmap);
+    free(lpBitmap);
+    image_loaded = true;
+    // Clean up
+    CloseClipboard();
+    DeleteObject(hBmp);
+    return textureID;
+}
+
+POINT g_ptPicControl; 
+INT_PTR CALLBACK Toolbar_Proc3(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    switch (message)
+    {
+        case WM_CTLCOLORDLG:
+        {
+            if (Night_Mode) return (INT_PTR)GetStockObject(DKGRAY_BRUSH);
+            return (INT_PTR)GetStockObject(GRAY_BRUSH);
+        }
+        case WM_DRAWITEM:
+        {
+            if (MycRom.name[0] == 0) return TRUE;
+            LPDRAWITEMSTRUCT pDIS = (LPDRAWITEMSTRUCT)lParam;
+            if (pDIS->CtlID != IDC_COLORS) return FALSE; // we only owner draw the colors
+            HDC hdc = GetDC(GetDlgItem(hDlg, IDC_COLORS));
+            RECT rcColors, rcFirst;
+            GetWindowRect(GetDlgItem(hDlg, IDC_COLORS), &rcColors);
+            rcColors.right -= rcColors.left;
+            rcColors.bottom -= rcColors.top;
+            rcColors.left = 0;
+            rcColors.top = 0;
+            int colstepx = rcColors.right / 16;
+            int colstepy = rcColors.bottom / 4;
+            for (UINT tj = 0; tj < 4; tj++)
+            {
+                for (UINT ti = 0; ti < 16; ti++)
+                {
+                    rcFirst.left = ti * colstepx;
+                    rcFirst.right = (ti + 1) * colstepx - 1;
+                    rcFirst.top = tj * colstepy;
+                    rcFirst.bottom = (tj + 1) * colstepy - 1;
+                    HBRUSH hbr = CreateSolidBrush(RGB(MycRom.cPal[3 * (MycRom.ncColors * acFrame + tj * 16 + ti)], MycRom.cPal[3 * (MycRom.ncColors * acFrame + tj * 16 + ti) + 1], MycRom.cPal[3 * (MycRom.ncColors * acFrame + tj * 16 + ti) + 2]));
+                    FillRect(hdc, &rcFirst, hbr);
+                    DeleteObject(hbr);
+                    HPEN hPen = CreatePen(PS_SOLID, 1, RGB(255, 255, 255));
+                    SelectObject(hdc, hPen);
+                    if (!Is_Used_Color(acFrame, tj * 16 + ti))
+                    {
+                        MoveToEx(hdc, rcFirst.left, rcFirst.top, NULL);
+                        LineTo(hdc, rcFirst.right, rcFirst.bottom);
+                        DeleteObject(hPen);
+                    }
+                    SelectObject(hdc, GetStockObject(NULL_BRUSH));
+                    if ((tj * 16 + ti >= image_precolsel) && (tj * 16 + ti < (UINT)(image_precolsel + image_ncolsel)))
+                    {
+                        Rectangle(hdc, rcFirst.left, rcFirst.top, rcFirst.right + 1, rcFirst.bottom + 1);
+                    }
+                }
+            }
+            ReleaseDC(GetDlgItem(hDlg, IDC_COLORS), hdc);
+            return TRUE;
+        }
+        case WM_INITDIALOG:
+        {
+            SetWindowSubclass(GetDlgItem(hDlg, IDC_BROWSEIMAGE), ButtonSubclassProc3, 0, 0);
+            SetWindowSubclass(GetDlgItem(hDlg, IDC_CBPASTE), ButtonSubclassProc3, 0, 0);
+            //SetWindowSubclass(GetDlgItem(hDlg, IDC_DELIMAGE), ButtonSubclassProc3, 0, 0);
+            SetWindowSubclass(GetDlgItem(hDlg, IDC_COPY), ButtonSubclassProc3, 0, 0);
+            SetWindowSubclass(GetDlgItem(hDlg, IDC_ZOOMIN), ButtonSubclassProc3, 0, 0);
+            SetWindowSubclass(GetDlgItem(hDlg, IDC_ZOOMOUT), ButtonSubclassProc3, 0, 0);
+            SetWindowSubclass(GetDlgItem(hDlg, IDC_COLORS), ButtonSubclassProc3, 0, 0);
+            //SetWindowSubclass(GetDlgItem(hDlg, IDC_IMAGELIST), ButtonSubclassProc3, 0, 0);
+            HWND hPicControl = GetDlgItem(hDlg, IDC_COLORS);
+            RECT rcPicControl;
+            GetWindowRect(hPicControl, &rcPicControl);
+            MapWindowPoints(HWND_DESKTOP, hDlg, (LPPOINT)&rcPicControl, 2);
+            g_ptPicControl.x = rcPicControl.left;
+            g_ptPicControl.y = rcPicControl.top;
+        }
+        case WM_LBUTTONDOWN:
+        {
+            // Get the mouse position relative to the parent dialog box
+            POINT ptMouse;
+            ptMouse.x = GET_X_LPARAM(lParam);
+            ptMouse.y = GET_Y_LPARAM(lParam);
+            // Check if the mouse position is within the rectangle that defines the picture control
+            RECT rcPicControl;
+            GetWindowRect(GetDlgItem(hDlg, IDC_COLORS), &rcPicControl);
+            MapWindowPoints(HWND_DESKTOP, hDlg, (LPPOINT)&rcPicControl, 2);
+            if (PtInRect(&rcPicControl, ptMouse))
+            {
+                int colstepx = (rcPicControl.right - rcPicControl.left) / 16;
+                int colstepy = (rcPicControl.bottom - rcPicControl.top) / 4;
+                // Get the mouse position relative to the picture control
+                image_precolsel = (UINT)((ptMouse.x - rcPicControl.left) / colstepx + (ptMouse.y - rcPicControl.top) / colstepy * 16);
+                image_ncolsel = 1;
+                InvalidateRect(GetDlgItem(hDlg, IDC_COLORS), NULL, FALSE);
+            }
+            return TRUE;        
+        }
+
+        case WM_LBUTTONUP:
+        {
+            // Get the mouse position relative to the parent dialog box
+            POINT ptMouse;
+            ptMouse.x = GET_X_LPARAM(lParam);
+            ptMouse.y = GET_Y_LPARAM(lParam);
+            // Check if the mouse position is within the rectangle that defines the picture control
+            RECT rcPicControl;
+            GetWindowRect(GetDlgItem(hDlg, IDC_COLORS), &rcPicControl);
+            MapWindowPoints(HWND_DESKTOP, hDlg, (LPPOINT)&rcPicControl, 2);
+            if (PtInRect(&rcPicControl, ptMouse))
+            {
+                int colstepx = (rcPicControl.right - rcPicControl.left) / 16;
+                int colstepy = (rcPicControl.bottom - rcPicControl.top) / 4;
+                // Get the mouse position relative to the picture control
+                image_ncolsel = (UINT)((ptMouse.x - rcPicControl.left) / colstepx + (ptMouse.y - rcPicControl.top) / colstepy * 16) - image_precolsel + 1;
+                InvalidateRect(GetDlgItem(hDlg, IDC_COLORS), NULL, FALSE);
+            }
+            return TRUE;
+        }
+        case WM_COMMAND:
+        {
+            switch (LOWORD(wParam))
+            {
+                case IDC_BROWSEIMAGE:
+                {
+                    // Load a txt file as a base for a new project
+                    OPENFILENAMEA ofn;
+                    char szFile[260] = { 0 };
+
+                    ZeroMemory(&ofn, sizeof(ofn));
+                    ofn.lStructSize = sizeof(ofn);
+                    ofn.lpstrTitle = "Choose an image file";
+                    ofn.hwndOwner = hImages;
+                    ofn.lpstrFile = szFile;
+                    ofn.lpstrFile[0] = '\0';
+                    ofn.nMaxFile = sizeof(szFile);
+                    ofn.lpstrFilter = "Image (.jpg;.jpeg;.png;.bmp)\0*.jpg;*.jpeg;*.png;*.bmp\0";
+                    ofn.nFilterIndex = 1;
+                    ofn.lpstrInitialDir = DumpDir;
+                    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+
+                    if (GetOpenFileNameA(&ofn) == TRUE)
+                    {
+                        glfwMakeContextCurrent(glfwimages);
+                        TxImage = CreateTextureFromImage(ofn.lpstrFile ,&width_image, &height_image);
+                        float imgratio = (float)width_image / (float)height_image;
+                        if (imgratio > (float)ScrW3 / (float)ScrH3)
+                        {
+                            image_sizeW = ScrW3;
+                            image_sizeH = (UINT)((float)image_sizeW / imgratio);
+                        }
+                        else
+                        {
+                            image_sizeH = ScrH3;
+                            image_sizeW = (UINT)((float)image_sizeH * imgratio);
+                        }
+                        image_posx = (ScrW3 - image_sizeW) / 2;
+                        image_posy = (ScrH3 - image_sizeH) / 2;
+                    }
+                    GetSelectionSize(&XSelection, &YSelection, &WSelection, &HSelection);
+                    return TRUE;
+                }
+                case IDC_CBPASTE:
+                {
+                    TxImage = CreateTextureFromClipboard(&width_image, &height_image);
+                    if (TxImage == (UINT)-1) return TRUE;
+                    float imgratio = (float)width_image / (float)height_image;
+                    //UINT width, height, x, y;
+                    if (imgratio > (float)ScrW3 / (float)ScrH3)
+                    {
+                        image_sizeW = ScrW3;
+                        image_sizeH = (UINT)((float)image_sizeW / imgratio);
+                    }
+                    else
+                    {
+                        image_sizeH = ScrH3;
+                        image_sizeW = (UINT)((float)image_sizeH * imgratio);
+                    }
+                    image_posx = (ScrW3 - image_sizeW) / 2;
+                    image_posy = (ScrH3 - image_sizeH) / 2;
+                    GetSelectionSize(&XSelection, &YSelection, &WSelection, &HSelection);
+                    return TRUE;
+                }
+                case IDC_ZOOMIN:
+                {
+                    mouse_scroll_callback3(glfwimages, 0, -1);
+                    return TRUE;
+                }
+                case IDC_ZOOMOUT:
+                {
+                    mouse_scroll_callback3(glfwimages, 0, 1);
+                    return TRUE;
+                }
+                case IDC_COPY:
+                {
+                    if (!image_loaded || (MycRom.name[0] == 0)) return TRUE;
+                    if ((WSelection < 4) || (HSelection < 4) || (WSelection > MycRom.fWidth) || (HSelection > MycRom.fHeight))
+                    {
+                        MessageBoxA(hImages, "The selection must be at least 4x4 pixels in the frame window to use this function", "Failed", MB_OK);
+                        return TRUE;
+                    }
+                    if (image_ncolsel < 2)
+                    {
+                        MessageBoxA(hImages, "Select at least 2 colors to copie the image palette to", "Failed", MB_OK);
+                        return TRUE;
+                    }
+                    SaveAction(true, SA_DRAW);
+                    //cv::Mat img = imread(image_path, IMREAD_COLOR);
+                    float ratio = (float)width_image / (float)image_sizeW;
+                    cv::Rect croprect((int)(crop_offsetx* ratio), (int)(crop_offsety* ratio), (int)(crop_sizeW* ratio), (int)(crop_sizeH* ratio));
+                    cv::Mat croppedimg = image_mat(croprect);
+                    cv::Mat tmp;
+                    cv::resize(croppedimg, tmp, cv::Size(WSelection, HSelection), 0, 0, cv::INTER_LANCZOS4);
+                    unsigned char palette[64 * 3];
+                    unsigned char image[256 * 64];
+                    ReduceRGB24ToNColorsImage(tmp, image_ncolsel, palette, image);
+                    CopyImageToSelection(palette, image);
+
+                    InvalidateRect(GetDlgItem(hwTB3, IDC_COLORS), NULL, FALSE);
+                    UpdateSSneeded = true;
+                    return TRUE;
+                }
+            }
+            return (INT_PTR)FALSE;
+        }
     }
     return (INT_PTR)FALSE;
 }
@@ -7424,6 +8220,19 @@ void CheckAccelerators(void)
             }
         }
     }
+    else if (GetForegroundWindow() == hImages)
+    {
+        if ((isVReleased) && (GetKeyState('V') & 0x8000))
+        {
+            isVReleased = false;
+            SendMessage(hwTB3, WM_COMMAND, IDC_CBPASTE, 0);
+        }
+        if ((isCReleased) && (GetKeyState('C') & 0x8000))
+        {
+            isCReleased = false;
+            SendMessage(hwTB3, WM_COMMAND, IDC_COPY, 0);
+        }
+   }
 }
 
 void mouse_scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
@@ -7720,6 +8529,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                             Copy_Col[ti] = MycRom.cFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ti];
                             Copy_Colo[ti] = MycRP.oFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ti];
                             Copy_Dyna[ti] = MycRom.DynaMasks[acFrame * MycRom.fWidth * MycRom.fHeight + ti];
+                            GetSelectionSize(&XSelection, &YSelection, &WSelection, &HSelection);
                         }
                         else
                         {
@@ -7734,6 +8544,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                     }
                     else
                     { 
+                        if (MycRP.Draw_Mode != 4) return;
                         if (MycRom.DynaMasks[acFrame * MycRom.fWidth * MycRom.fHeight + ygrid * MycRom.fWidth + xgrid] != 255)
                         {
                             MessageBoxA(hWnd, "The pixel you clicked is dynamically colored, this function works only for static content.", "Improper use", MB_OK);
@@ -8082,6 +8893,48 @@ void mouse_button_callback2(GLFWwindow* window, int button, int action, int mods
         }
         return;
     }
+}
+
+void mouse_scroll_callback3(GLFWwindow* window, double xoffset, double yoffset)
+{
+    short step = (short)-yoffset;
+    if (GetKeyState(VK_SHIFT) & 0x8000) step *= 10;
+    crop_reduction += step;
+    if (crop_reduction < 0) crop_reduction = 0;
+    else if ((crop_reduction > (int)image_sizeW - 20) && (initcropwidth > 0)) crop_reduction = image_sizeW - 20;
+    else if ((crop_reduction > (int)image_sizeH - 20) && (initcropheight > 0)) crop_reduction = image_sizeH - 20;
+    if (crop_offsetx + crop_sizeW > image_sizeW) crop_offsetx = image_sizeW - crop_sizeW;
+    else if (crop_offsetx < 0) crop_offsetx = 0;
+    if (crop_offsety + crop_sizeH > image_sizeH) crop_offsety = image_sizeH - crop_sizeH;
+    else if (crop_offsety < 0) crop_offsety = 0;
+}
+
+void mouse_move_callback3(GLFWwindow* window, double xpos, double ypos)
+{
+    if (image_mousepressed)
+    {
+        if ((xpos >= image_posx) && (xpos < image_posx + image_sizeW) && (ypos >= image_posy) && (ypos < image_posy + image_sizeH))
+        {
+            if (xpos < image_posx + crop_sizeW / 2) crop_offsetx = 0;
+            else if (xpos > image_posx + image_sizeW - crop_sizeW / 2) crop_offsetx = image_sizeW - crop_sizeW;
+            else crop_offsetx = (int)xpos - image_posx - crop_sizeW / 2;
+            if (ypos < image_posy + crop_sizeH / 2) crop_offsety = 0;
+            else if (ypos > image_posy + image_sizeH - crop_sizeH / 2) crop_offsety = image_sizeH - crop_sizeH;
+            else crop_offsety = (int)ypos - image_posy - crop_sizeH / 2;
+        }
+    }
+}
+
+void mouse_button_callback3(GLFWwindow* window, int button, int action, int mods)
+{
+    double xpos, ypos;
+    glfwGetCursorPos(window, &xpos, &ypos);
+    if (action == GLFW_PRESS)
+    {
+        image_mousepressed = true;
+        mouse_move_callback3(window, xpos, ypos);
+    }
+    else if (action == GLFW_RELEASE) image_mousepressed = false;
 }
 
 bool isPressed(int nVirtKey, DWORD* timePress)
@@ -8444,7 +9297,7 @@ bool CreateToolbar2(void)
     hwTB2 = CreateDialog(hInst, MAKEINTRESOURCE(IDD_SPRDLG), hSprites, Toolbar_Proc2);
     if (!hwTB2)
     {
-        cprintf("Unable to create the comparison toolbar");
+        cprintf("Unable to create the sprite toolbar");
         return false;
     }
     ShowWindow(hwTB2, TRUE);
@@ -8495,7 +9348,50 @@ bool CreateToolbar2(void)
     UpdateSpriteList3();
     return true;
 }
- 
+
+bool CreateToolbar3(void)
+{
+    if (hwTB3)
+    {
+        /*RemoveWindowSubclass(hwTB2, (SUBCLASSPROC)SubclassSpriteListProc, 5);
+        RemoveWindowSubclass(hwTB2, (SUBCLASSPROC)SubclassSpriteDetListProc, 6);*/
+        DestroyWindow(hwTB2);
+    }
+    hwTB3 = CreateDialog(hInst, MAKEINTRESOURCE(IDD_IMGDLG), hImages, Toolbar_Proc3);
+    if (!hwTB3)
+    {
+        cprintf("Unable to create the image toolbar");
+        return false;
+    }
+    ShowWindow(hwTB3, TRUE);
+    SetIcon(GetDlgItem(hwTB3, IDC_BROWSEIMAGE), IDI_LOADIMAGE);
+    SetIcon(GetDlgItem(hwTB3, IDC_CBPASTE), IDI_CLIPIMAGE);
+    //SetIcon(GetDlgItem(hwTB3, IDC_DELIMAGE), IDI_DELIMAGE);
+    SetIcon(GetDlgItem(hwTB3, IDC_COPY), IDI_COPY);
+    SetIcon(GetDlgItem(hwTB3, IDC_ZOOMIN), IDI_DOWNSCALE);
+    SetIcon(GetDlgItem(hwTB3, IDC_ZOOMOUT), IDI_UPSCALE);
+    SetWindowLong(GetDlgItem(hwTB3, IDC_STRY4), GWL_STYLE, WS_BORDER | WS_CHILD | WS_VISIBLE | SS_BLACKRECT);
+    SetWindowPos(GetDlgItem(hwTB3, IDC_STRY4), 0, 0, 0, 5, 100, SWP_NOMOVE | SWP_NOZORDER);
+    SetWindowLong(GetDlgItem(hwTB3, IDC_STRY12), GWL_STYLE, WS_BORDER | WS_CHILD | WS_VISIBLE | SS_BLACKRECT);
+    SetWindowPos(GetDlgItem(hwTB3, IDC_STRY12), 0, 0, 0, 5, 100, SWP_NOMOVE | SWP_NOZORDER);
+    SetWindowLong(GetDlgItem(hwTB3, IDC_STRY14), GWL_STYLE, WS_BORDER | WS_CHILD | WS_VISIBLE | SS_BLACKRECT);
+    SetWindowPos(GetDlgItem(hwTB3, IDC_STRY14), 0, 0, 0, 5, 100, SWP_NOMOVE | SWP_NOZORDER);
+    if (UndoAvailable > 0) EnableWindow(GetDlgItem(hwTB3, IDC_UNDO), TRUE); else EnableWindow(GetDlgItem(hwTB3, IDC_UNDO), FALSE);
+    if (RedoAvailable > 0) EnableWindow(GetDlgItem(hwTB3, IDC_REDO), TRUE); else EnableWindow(GetDlgItem(hwTB3, IDC_REDO), FALSE);
+    /*char tbuf[8];
+    SendMessage(GetDlgItem(hwTB2, IDC_DETSPR), CB_RESETCONTENT, 0, 0);
+    for (int ti = 0; ti < MAX_SPRITE_DETECT_AREAS; ti++)
+    {
+        _itoa_s(ti + 1, tbuf, 8, 10);
+        SendMessageA(GetDlgItem(hwTB2, IDC_DETSPR), CB_ADDSTRING, 0, (LPARAM)tbuf);
+    }
+    SendMessage(GetDlgItem(hwTB2, IDC_DETSPR), CB_SETCURSEL, 0, 1);*/
+    //acDetSprite = 0;
+    //UpdateSpriteList();
+    //UpdateSpriteList3();
+    return true;
+}
+
 bool CreateTextures(void)
 {
     // Create the textures for the lower strip showing the frames
@@ -8525,7 +9421,7 @@ bool CreateTextures(void)
     // Create the number texture
     Bitmap* pbmp = Bitmap::FromFile(L"textures\\chiffres.png");
     if (pbmp == NULL) return false;
-    Rect rect = Rect(0, 0, pbmp->GetWidth(), pbmp->GetHeight());
+    Gdiplus::Rect rect = Gdiplus::Rect(0, 0, pbmp->GetWidth(), pbmp->GetHeight());
     BitmapData bmpdata;
     pbmp->LockBits(&rect, ImageLockModeRead, PixelFormat32bppARGB, &bmpdata);
     glGenTextures(1, &TxChiffres);
@@ -8567,7 +9463,7 @@ bool CreateTextures(void)
     pbmp = NULL;
     pbmp = Bitmap::FromFile(L"textures\\cRom.png");
     if (pbmp == NULL) return false;
-    rect = Rect(0, 0, pbmp->GetWidth(), pbmp->GetHeight());
+    rect = Gdiplus::Rect(0, 0, pbmp->GetWidth(), pbmp->GetHeight());
     pbmp->LockBits(&rect, ImageLockModeRead, PixelFormat32bppARGB, &bmpdata);
     glGenTextures(1, &TxcRom);
 
@@ -8724,6 +9620,24 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         cprintf("Call to RegisterClassEx2 failed!");
         return 1;
     }
+    WNDCLASSEXW wcex3;
+    wcex3.cbSize = sizeof(WNDCLASSEX);
+    wcex3.style = CS_HREDRAW | CS_VREDRAW;
+    wcex3.lpfnWndProc = WndProc3;
+    wcex3.cbClsExtra = 0;
+    wcex3.cbWndExtra = 0;
+    wcex3.hInstance = hInstance;
+    wcex3.hIcon = LoadIcon(hInst, MAKEINTRESOURCE(IDI_CROM)); // LoadIcon(hInstance, MAKEINTRESOURCE(IDI_COLORIZINGDMD));
+    wcex3.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    wcex3.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    wcex3.lpszMenuName = NULL;// MAKEINTRESOURCEW(IDC_COLORIZINGDMD);
+    wcex3.lpszClassName = szWindowClass3;
+    wcex3.hIconSm = NULL; // LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
+    if (!RegisterClassEx(&wcex3))
+    {
+        cprintf("Call to RegisterClassEx3 failed!");
+        return 1;
+    }
     hWnd = CreateWindow(szWindowClass, L"ColorizingDMD", WS_OVERLAPPEDWINDOW | WS_SIZEBOX,
         CW_USEDEFAULT, CW_USEDEFAULT, 1480,900, nullptr, nullptr, hInstance, nullptr);
     if (!hWnd)
@@ -8735,7 +9649,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     UpdateWindow(hWnd);
     hStatus=DoCreateStatusBar(hWnd, hInst);
     hSprites = CreateWindow(szWindowClass2, L"Sprites", WS_OVERLAPPEDWINDOW | WS_SIZEBOX,
-        CW_USEDEFAULT, CW_USEDEFAULT, 1480,900, nullptr, nullptr, hInstance, nullptr);
+        CW_USEDEFAULT, CW_USEDEFAULT, 1480, 900, nullptr, nullptr, hInstance, nullptr);
     if (!hSprites)
     {
         AffLastError((char*)"CreateWindow2");
@@ -8744,6 +9658,16 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     ShowWindow(hSprites, SW_SHOW);
     UpdateWindow(hSprites);
     hStatus2 = DoCreateStatusBar(hSprites, hInst);
+    hImages = CreateWindow(szWindowClass3, L"Images", WS_OVERLAPPEDWINDOW | WS_SIZEBOX,
+        CW_USEDEFAULT, CW_USEDEFAULT, 1480, 900, nullptr, nullptr, hInstance, nullptr);
+    if (!hImages)
+    {
+        AffLastError((char*)"CreateWindow3");
+        return FALSE;
+    }
+    ShowWindow(hImages, SW_SHOW);
+    UpdateWindow(hImages);
+    hStatus3 = DoCreateStatusBar(hImages, hInst);
     LoadWindowPosition();
 
     WNDCLASSEX child;
@@ -8776,6 +9700,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     if (!gl33_InitWindow(&glfwframestrip, 10, 10, "Frame Strip", hWnd)) return -1;
     if (!gl33_InitWindow(&glfwsprites, 10, 10, "Sprite", hSprites)) return -1;
     if (!gl33_InitWindow(&glfwspritestrip, 10, 10, "Sprite Strip", hSprites)) return -1;
+    if (!gl33_InitWindow(&glfwimages, 10, 10, "Image", hImages)) return -1;
     glfwSetMouseButtonCallback(glfwframe, mouse_button_callback);
     glfwSetMouseButtonCallback(glfwframestrip, mouse_button_callback);
     glfwSetCursorPosCallback(glfwframe, mouse_move_callback);
@@ -8788,11 +9713,15 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     glfwSetCursorPosCallback(glfwspritestrip, mouse_move_callback2);
     glfwSetScrollCallback(glfwsprites, mouse_scroll_callback2);
     glfwSetScrollCallback(glfwspritestrip, mouse_scroll_callback2);
+    glfwSetMouseButtonCallback(glfwimages, mouse_button_callback3);
+    glfwSetCursorPosCallback(glfwimages, mouse_move_callback3);
+    glfwSetScrollCallback(glfwimages, mouse_scroll_callback3);
 
     LoadSaveDir();
 
     if (!CreateToolbar()) return -1;
     if (!CreateToolbar2()) return -1;
+    if (!CreateToolbar3()) return -1;
     TxCircle=text_CreateTextureCircle(glfwframe);
     MSG msg;
 
@@ -8815,6 +9744,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     if (!CreateTextures()) return -1;
     Calc_Resize_Frame();
     Calc_Resize_Sprite();
+    Calc_Resize_Image();
     UpdateFSneeded = true;
     timeSelFrame = timeGetTime() + 500;
     DWORD tickCount = GetTickCount();
@@ -9156,7 +10086,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                 {
                     Frame_Strip_Update();
                     UpdateTriggerID();
-                    //UpdateFSneededwhenBreleased = false;
+                    InvalidateRect(GetDlgItem(hwTB3, IDC_COLORS), NULL, FALSE);
                     UpdateFSneeded = false;
                 }
                 Draw_Frame_Strip();
@@ -9260,8 +10190,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             Draw_Sprite_Strip();
             gl33_SwapBuffers(glfwsprites, true);
             gl33_SwapBuffers(glfwspritestrip, true);
-            CheckAccelerators();
         }
+        if (!IsIconic(hImages))
+        {
+            Draw_Image();
+            gl33_SwapBuffers(glfwimages, true);
+        }
+        CheckAccelerators();
     }
     SaveSaveDir();
     free(RedoSave);
