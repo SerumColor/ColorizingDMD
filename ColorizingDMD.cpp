@@ -37,7 +37,7 @@ using namespace cv;
 
 #define MAJ_VERSION 1
 #define MIN_VERSION 22
-#define PATCH_VERSION 2
+#define PATCH_VERSION 3
 
 static TCHAR szWindowClass[] = _T("ColorizingDMD");
 static TCHAR szWindowClass2[] = _T("ChildWin");
@@ -87,7 +87,7 @@ UINT TxCircle = (UINT) - 1; // LED imitation circle texture ID
 UINT TxFrameStrip[2] = { (UINT)-1, (UINT)-1 }; // Framebuffer texture for the strip displaying the frames ID
 UINT TxSpriteStrip[2] = { (UINT)-1, (UINT)-1 }; // Framebuffer texture for the strip displaying the sprites ID
 UINT TxChiffres, TxcRom; // Number texture ID
-UINT TxImage=NULL; // Image texture ID
+UINT TxImage = (UINT)-1; // Image texture ID
 UINT width_image, height_image; // width and height of the loaded image
 UINT XSelection = 0, YSelection = 0, WSelection = 0, HSelection = 0; // size of the selection in the main window in LEDs
 UINT NSelection = 0; // how many pixels selected
@@ -3081,7 +3081,7 @@ void GetSelectionSize(UINT* px, UINT* py, UINT* pw, UINT* ph, UINT* pn)
 
 void Draw_Image(void)
 {
-    if (!TxImage) return;
+    if (TxImage == (UINT)-1) return;
     glfwMakeContextCurrent(glfwimages);
     glDisable(GL_BLEND);
     glBindTexture(GL_TEXTURE_2D, TxImage);
@@ -3101,12 +3101,12 @@ void Draw_Image(void)
     glTexCoord2f(0, 1);
     glVertex2i(image_posx, image_posy + image_sizeH - 1);
     glEnd();
-    if (TxImage >= 0)
+    glEnable(GL_BLEND);
+    glColor4f(0, 0, 0, 0.80f);
+    glDisable(GL_TEXTURE_2D);
+    glBegin(GL_TRIANGLES);
+    if (NSelection > 0)
     {
-        glEnable(GL_BLEND);
-        glColor4f(0, 0, 0, 0.80f);
-        glDisable(GL_TEXTURE_2D);
-        glBegin(GL_TRIANGLES);
         if (initcropwidth > 0)
         {
             crop_sizeW = image_sizeW - crop_reduction;
@@ -3148,9 +3148,17 @@ void Draw_Image(void)
         glVertex2i(image_posx + crop_offsetx, image_posy + crop_offsety + crop_sizeH);
         glVertex2i(image_posx + crop_offsetx + crop_sizeW, image_posy + image_sizeH);
         glVertex2i(image_posx + crop_offsetx, image_posy + image_sizeH);
-
-        glEnd();
     }
+    else
+    {
+        glVertex2i(image_posx, image_posy);
+        glVertex2i(image_posx + image_sizeW, image_posy);
+        glVertex2i(image_posx + image_sizeW, image_posy + image_sizeH);
+        glVertex2i(image_posx, image_posy);
+        glVertex2i(image_posx + image_sizeW, image_posy + image_sizeH);
+        glVertex2i(image_posx, image_posy + image_sizeH);
+    }
+    glEnd();
 }
 
 #pragma endregion Window_Tools_And_Drawings
@@ -6976,6 +6984,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                     InvalidateRect(hwTB2, NULL, TRUE);
                     InvalidateRect(hImages, NULL, TRUE);
                     InvalidateRect(hwTB3, NULL, TRUE);
+                    DeleteObject(brush);
                     return TRUE;
                 }
             }
@@ -7816,6 +7825,7 @@ INT_PTR CALLBACK Toolbar_Proc3(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             DeleteObject(hbr);
             int colstepx = rcColors.right / 16;
             int colstepy = rcColors.bottom / 4;
+            HPEN hPen = CreatePen(PS_SOLID, 1, RGB(255, 255, 255));
             for (UINT tj = 0; tj < 4; tj++)
             {
                 for (UINT ti = 0; ti < 16; ti++)
@@ -7827,13 +7837,11 @@ INT_PTR CALLBACK Toolbar_Proc3(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                     hbr = CreateSolidBrush(RGB(MycRom.cPal[3 * (MycRom.ncColors * acFrame + tj * 16 + ti)], MycRom.cPal[3 * (MycRom.ncColors * acFrame + tj * 16 + ti) + 1], MycRom.cPal[3 * (MycRom.ncColors * acFrame + tj * 16 + ti) + 2]));
                     FillRect(hdc, &rcFirst, hbr);
                     DeleteObject(hbr);
-                    HPEN hPen = CreatePen(PS_SOLID, 1, RGB(255, 255, 255));
-                    SelectObject(hdc, hPen);
                     if (!Is_Used_Color(acFrame, tj * 16 + ti))
                     {
+                        SelectObject(hdc, hPen);
                         MoveToEx(hdc, rcFirst.left, rcFirst.top, NULL);
                         LineTo(hdc, rcFirst.right, rcFirst.bottom);
-                        DeleteObject(hPen);
                     }
                     SelectObject(hdc, GetStockObject(NULL_BRUSH));
                     if ((tj * 16 + ti >= image_precolsel) && (tj * 16 + ti < (UINT)(image_precolsel + image_ncolsel)))
@@ -7842,6 +7850,7 @@ INT_PTR CALLBACK Toolbar_Proc3(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                     }
                 }
             }
+            DeleteObject(hPen);
             ReleaseDC(GetDlgItem(hDlg, IDC_COLORS), hdc);
             return TRUE;
         }
@@ -7936,6 +7945,7 @@ INT_PTR CALLBACK Toolbar_Proc3(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                         {
                             tmat.release();
                             image_source_format_video = false;
+                            if (TxImage != (UINT)-1) glDeleteTextures(1, &TxImage);
                             TxImage = CreateTextureFromImage(ofn.lpstrFile, &width_image, &height_image);
                             float imgratio = (float)width_image / (float)height_image;
                             if (imgratio > (float)ScrW3 / (float)ScrH3)
@@ -7965,6 +7975,7 @@ INT_PTR CALLBACK Toolbar_Proc3(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                                 return TRUE;
                             }
                             image_video_cap.release();
+                            tmat.release();
                         }
                     }
                     GetSelectionSize(&XSelection, &YSelection, &WSelection, &HSelection, &NSelection);
@@ -7972,6 +7983,7 @@ INT_PTR CALLBACK Toolbar_Proc3(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                 }
                 case IDC_CBPASTE:
                 {
+                    if (TxImage != (UINT)-1) glDeleteTextures(1, &TxImage);
                     TxImage = CreateTextureFromClipboard(&width_image, &height_image);
                     if (TxImage == (UINT)-1) return TRUE;
                     float imgratio = (float)width_image / (float)height_image;
@@ -8015,16 +8027,17 @@ INT_PTR CALLBACK Toolbar_Proc3(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                         return TRUE;
                     }
                     SaveAction(true, SA_DRAW);
-                    //cv::Mat img = imread(image_path, IMREAD_COLOR);
                     float ratio = (float)width_image / (float)image_sizeW;
                     cv::Rect croprect((int)(crop_offsetx* ratio), (int)(crop_offsety* ratio), (int)(crop_sizeW* ratio), (int)(crop_sizeH* ratio));
                     cv::Mat croppedimg = image_mat(croprect);
                     cv::Mat tmp;
                     cv::resize(croppedimg, tmp, cv::Size(WSelection, HSelection), 0, 0, cv::INTER_LANCZOS4);
+                    croppedimg.release();
                     unsigned char palette[64 * 3];
                     unsigned char image[256 * 64];
                     if (image_ncolsel > NSelection) image_ncolsel = NSelection;
                     ReduceRGB24ToNColorsImage(tmp, image_ncolsel, palette, image);
+                    tmp.release();
                     CopyImageToSelection(palette, image);
                     InvalidateRect(GetDlgItem(hwTB3, IDC_COLORS), NULL, TRUE);
                     UpdateSSneeded = true;
