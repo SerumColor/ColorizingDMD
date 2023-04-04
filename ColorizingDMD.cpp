@@ -36,8 +36,8 @@ using namespace cv;
 #pragma region Global_Variables
 
 #define MAJ_VERSION 1
-#define MIN_VERSION 22
-#define PATCH_VERSION 3
+#define MIN_VERSION 23
+#define PATCH_VERSION 1
 
 static TCHAR szWindowClass[] = _T("ColorizingDMD");
 static TCHAR szWindowClass2[] = _T("ChildWin");
@@ -101,9 +101,13 @@ UINT image_sizeW = 10, image_sizeH = 10; // size of the image in the image scree
 bool image_mousepressed = false; // is button pressed on the image
 bool image_source_format_video = false; // is the file loaded a video?
 cv::VideoCapture image_video_cap; // the video file opened
-//char image_path[MAX_PATH] = { 0 }; // path of the image
+double image_video_frame_rate = 60.0; // number of frames per second in the video
+UINT8 image_video_hour, image_video_minute, image_video_second, image_video_frame; // time selected for the video
+UINT8 image_video_nhours, image_video_nminutes, image_video_nseconds, image_video_nframes; // length of the video in HMSF
 bool image_loaded = false; // is there an image loaded
-cv::Mat image_mat; // the image loaded
+cv::Mat image_mat, image_org_mat; // the image loaded
+int image_brightness = 0, image_contrast = 0;
+char image_path[MAX_PATH]; // path to the image file
 unsigned char image_precolsel = 0, image_ncolsel = 1; // number of color selected in image mode
 UINT acFSText = 0; // current texture displayed on the frame strip
 UINT acSSText = 0; // current texture displayed on the sprite strip
@@ -842,10 +846,10 @@ void RecoverAction(bool isUndo)
 
 void cprintf(const char* format,...) // write to the console
 {
-    char tbuf[490];
+    char tbuf[5000];
     va_list argptr;
     va_start(argptr, format);
-    vsprintf_s(tbuf,490, format, argptr);
+    vsprintf_s(tbuf,1024, format, argptr);
     va_end(argptr);
     char tbuf2[512];
     SYSTEMTIME lt;
@@ -6964,12 +6968,12 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                     HBRUSH brush;
                     if (!Night_Mode)
                     {
-                        brush = CreateSolidBrush(RGB(20, 20, 20));
+                        brush = (HBRUSH)GetStockObject(DKGRAY_BRUSH);
                         Night_Mode = true;
                     }
                     else
                     {
-                        brush = CreateSolidBrush(RGB(240, 240, 240));
+                        brush = (HBRUSH)GetStockObject(WHITE_BRUSH);
                         Night_Mode = false;
                     }
                     SetClassLongPtr(hWnd, GCLP_HBRBACKGROUND, (LONG_PTR)brush);
@@ -6984,7 +6988,6 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                     InvalidateRect(hwTB2, NULL, TRUE);
                     InvalidateRect(hImages, NULL, TRUE);
                     InvalidateRect(hwTB3, NULL, TRUE);
-                    DeleteObject(brush);
                     return TRUE;
                 }
             }
@@ -7248,10 +7251,16 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                 int notodisplay = 0;
                 for (UINT tj = 0; tj < nSelFrames; tj++)
                 {
+                    bool spritefound = false;
                     for (UINT ti = 0; ti < MAX_SPRITES_PER_FRAME; ti++)
                     {
-                        if (MycRom.FrameSprites[SelFrames[tj] * MAX_SPRITES_PER_FRAME + ti] == acSprite) return TRUE;
+                        if (MycRom.FrameSprites[SelFrames[tj] * MAX_SPRITES_PER_FRAME + ti] == acSprite)
+                        {
+                            spritefound = true;
+                            break;
+                        }
                     }
+                    if (spritefound) continue;
                     UINT ti = 0;
                     while ((MycRom.FrameSprites[SelFrames[tj] * MAX_SPRITES_PER_FRAME + ti] != 255) && (ti < MAX_SPRITES_PER_FRAME)) ti++;
                     if (ti == MAX_SPRITES_PER_FRAME)
@@ -7483,9 +7492,21 @@ LRESULT CALLBACK ButtonSubclassProc3(HWND hBut, UINT message, WPARAM wParam, LPA
     return DefSubclassProc(hBut, message, wParam, lParam);
 }
 
+void ApplyBrightnessAndContrast(cv::Mat mat)
+{
+    cv::Mat floatImage;
+    mat.convertTo(floatImage, CV_32F);
+    double alpha = 1 + 0.05 * image_contrast;
+    if (alpha == 1.0) alpha = 1.001;
+    double beta = 2.5 * image_brightness;
+    floatImage = alpha * floatImage + beta;
+    floatImage.convertTo(mat, mat.type());
+}
+
 UINT CreateTextureFromImage(char* filename, UINT* width, UINT* height)
 {
     cv::Mat mat = cv::imread(filename);
+    ApplyBrightnessAndContrast(mat);
     if (mat.empty()) return (UINT)-1;
     if (mat.cols % 4 != 0)
     {
@@ -7495,10 +7516,11 @@ UINT CreateTextureFromImage(char* filename, UINT* width, UINT* height)
         cv::Mat tmat;
         resize(mat, tmat, cv::Size(cols, rows), 0, 0, cv::INTER_CUBIC);
         mat.release();
-        mat = tmat;
+        mat = tmat.clone();
+        tmat.release();
     }
     // Create an OpenGL texture
-    
+
     // Determine the format and type of the pixel data based on the cv::Mat
     GLenum format;
     GLenum iformat;
@@ -7508,7 +7530,8 @@ UINT CreateTextureFromImage(char* filename, UINT* width, UINT* height)
     case 3:
         format = GL_RGB;
         iformat = GL_BGR;
-        image_mat = mat;
+        image_mat = mat.clone();
+        mat.release();
         break;
     case 4:
         format = GL_RGB;
@@ -7517,10 +7540,213 @@ UINT CreateTextureFromImage(char* filename, UINT* width, UINT* height)
         mat.release();
         break;
     default:
-        std::cerr << "Unsupported number of channels: " << image_mat.channels() << std::endl;
+        std::cerr << "Unsupported number of channels: " << mat.channels() << std::endl;
+        mat.release();
         return (UINT)-1;
     }
-    switch (mat.depth())
+    switch (image_mat.depth())
+    {
+    case CV_8U:
+        type = GL_UNSIGNED_BYTE;
+        break;
+    default:
+        std::cerr << "Unsupported data type: " << image_mat.depth() << std::endl;
+        image_mat.release();
+        return (UINT)-1;
+    }
+    *width = image_mat.cols;
+    *height = image_mat.rows;
+    // Set texture parameters
+    glfwMakeContextCurrent(glfwimages);
+    GLuint texture;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_RECTANGLE, texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    // Upload the pixel data to the texture
+    glTexImage2D(GL_TEXTURE_2D, 0, format, image_mat.cols, image_mat.rows, 0, iformat, type, image_mat.ptr());
+
+    image_loaded = true;
+    return texture;
+}
+
+UINT CreateTextureFromMat(void)
+{
+    cv::Mat mat = image_org_mat.clone();
+    ApplyBrightnessAndContrast(mat);
+    if (mat.empty()) return (UINT)-1;
+    if (mat.cols % 4 != 0)
+    {
+        float ratio = (float)mat.cols / (float)mat.rows;
+        int cols = mat.cols - (mat.cols % 4) + 4; // we align to the multiple of 4 above
+        int rows = (int)((float)cols / ratio);
+        cv::Mat tmat;
+        resize(mat, tmat, cv::Size(cols, rows), 0, 0, cv::INTER_CUBIC);
+        mat.release();
+        mat = tmat.clone();
+        tmat.release();
+    }
+    // Create an OpenGL texture
+
+    // Determine the format and type of the pixel data based on the cv::Mat
+    GLenum format;
+    GLenum iformat;
+    GLenum type;
+    switch (mat.channels())
+    {
+    case 3:
+        format = GL_RGB;
+        iformat = GL_BGR;
+        image_mat = mat.clone();
+        mat.release();
+        break;
+    case 4:
+        format = GL_RGB;
+        iformat = GL_BGR;
+        cvtColor(mat, image_mat, COLOR_BGRA2BGR);
+        mat.release();
+        break;
+    default:
+        std::cerr << "Unsupported number of channels: " << mat.channels() << std::endl;
+        mat.release();
+        return (UINT)-1;
+    }
+    switch (image_mat.depth())
+    {
+    case CV_8U:
+        type = GL_UNSIGNED_BYTE;
+        break;
+    default:
+        std::cerr << "Unsupported data type: " << image_mat.depth() << std::endl;
+        image_mat.release();
+        return (UINT)-1;
+    }
+    // Set texture parameters
+    glfwMakeContextCurrent(glfwimages);
+    GLuint texture;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_RECTANGLE, texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    // Upload the pixel data to the texture
+    glTexImage2D(GL_TEXTURE_2D, 0, format, image_mat.cols, image_mat.rows, 0, iformat, type, image_mat.ptr());
+
+    image_loaded = true;
+    return texture;
+}
+
+cv::Mat getFrameAtTime(VideoCapture cap)
+{
+    int totalFrames = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_COUNT));
+    image_video_frame_rate = (double)cap.get(cv::CAP_PROP_FPS);
+    double timeInSeconds = image_video_hour * 3600 + image_video_minute * 60 + image_video_second + (image_video_frame / image_video_frame_rate);
+    int positionInFrames = static_cast<int>(timeInSeconds * cap.get(cv::CAP_PROP_FPS));
+    positionInFrames = std::max(0, std::min(totalFrames - 1, positionInFrames));
+    cap.set(cv::CAP_PROP_POS_FRAMES, positionInFrames);
+    cv::Mat frame;
+    if (!cap.read(frame))
+        frame.data = NULL;
+    return frame;
+}
+
+void CreateMatFromVideo(VideoCapture video)
+{
+    cv::Mat mat = getFrameAtTime(video);
+    if (!mat.data) return;
+    ApplyBrightnessAndContrast(mat);
+    if (mat.cols % 4 != 0)
+    {
+        float ratio = (float)mat.cols / (float)mat.rows;
+        int cols = mat.cols - (mat.cols % 4) + 4; // we align to the multiple of 4 above
+        int rows = (int)((float)cols / ratio);
+        cv::Mat tmat;
+        resize(mat, tmat, cv::Size(cols, rows), 0, 0, cv::INTER_CUBIC);
+        mat.release();
+        mat = tmat.clone();
+        tmat.release();
+    }
+    // Create an OpenGL texture
+
+    // Determine the format and type of the pixel data based on the cv::Mat
+    GLenum format;
+    GLenum iformat;
+    GLenum type;
+    switch (mat.channels())
+    {
+    case 3:
+        format = GL_RGB;
+        iformat = GL_BGR;
+        image_mat = mat.clone();
+        mat.release();
+        break;
+    case 4:
+        format = GL_RGB;
+        iformat = GL_BGR;
+        cvtColor(mat, image_mat, COLOR_BGRA2BGR);
+        mat.release();
+        break;
+    default:
+        std::cerr << "Unsupported number of channels: " << mat.channels() << std::endl;
+        mat.release();
+        return;
+    }
+    switch (image_mat.depth())
+    {
+    case CV_8U:
+        type = GL_UNSIGNED_BYTE;
+        break;
+    default:
+        std::cerr << "Unsupported data type: " << image_mat.depth() << std::endl;
+        return;
+    }
+}
+
+UINT CreateTextureFromVideo(VideoCapture video, UINT* width, UINT* height)
+{
+    cv::Mat mat = getFrameAtTime(video);
+    if (!mat.data) return (UINT)-1;
+    ApplyBrightnessAndContrast(mat);
+    if (mat.cols % 4 != 0)
+    {
+        float ratio = (float)mat.cols / (float)mat.rows;
+        int cols = mat.cols - (mat.cols % 4) + 4; // we align to the multiple of 4 above
+        int rows = (int)((float)cols / ratio);
+        cv::Mat tmat;
+        resize(mat, tmat, cv::Size(cols, rows), 0, 0, cv::INTER_CUBIC);
+        mat.release();
+        mat = tmat.clone();
+        tmat.release();
+    }
+    // Create an OpenGL texture
+
+    // Determine the format and type of the pixel data based on the cv::Mat
+    GLenum format;
+    GLenum iformat;
+    GLenum type;
+    switch (mat.channels())
+    {
+    case 3:
+        format = GL_RGB;
+        iformat = GL_BGR;
+        image_mat = mat.clone();
+        mat.release();
+        break;
+    case 4:
+        format = GL_RGB;
+        iformat = GL_BGR;
+        cvtColor(mat, image_mat, COLOR_BGRA2BGR);
+        mat.release();
+        break;
+    default:
+        std::cerr << "Unsupported number of channels: " << mat.channels() << std::endl;
+        mat.release();
+        return (UINT)-1;
+    }
+    switch (image_mat.depth())
     {
     case CV_8U:
         type = GL_UNSIGNED_BYTE;
@@ -7529,8 +7755,8 @@ UINT CreateTextureFromImage(char* filename, UINT* width, UINT* height)
         std::cerr << "Unsupported data type: " << image_mat.depth() << std::endl;
         return (UINT)-1;
     }
-    *width = mat.cols;
-    *height = mat.rows;
+    *width = image_mat.cols;
+    *height = image_mat.rows;
     // Set texture parameters
     glfwMakeContextCurrent(glfwimages);
     GLuint texture;
@@ -7585,6 +7811,7 @@ void ReduceRGB24ToNColorsImage(cv::Mat image, unsigned int ncolors, unsigned cha
             res.at<Vec3b>(i, j) = centers.row(label);
         }
     }
+    labels.release();
     samples.release();
     centers.release();
 
@@ -7669,6 +7896,24 @@ void CopyImageToSelection(UINT8* palette, UINT8* image)
                 {
                     MycRom.cFrames[SelFrames[tk] * MycRom.fWidth * MycRom.fHeight + (tj + YSelection) * MycRom.fWidth + ti + XSelection] = image_precolsel + image[tj * WSelection + ti];
                 }
+            }
+        }
+    }
+}
+
+void CopyImageTo1Selection(UINT8* palette, UINT8* image,UINT nfr)
+{
+    for (UINT ti = 0; ti < (UINT)(image_ncolsel * 3); ti++)
+    {
+        MycRom.cPal[nfr * 3 * MycRom.ncColors + ti + image_precolsel * 3] = palette[ti];
+    }
+    for (UINT tj = 0; tj < HSelection; tj++)
+    {
+        for (UINT ti = 0; ti < WSelection; ti++)
+        {
+            if (Copy_Mask[(tj + YSelection) * MycRom.fWidth + ti + XSelection] > 0)
+            {
+                MycRom.cFrames[nfr * MycRom.fWidth * MycRom.fHeight + (tj + YSelection) * MycRom.fWidth + ti + XSelection] = image_precolsel + image[tj * WSelection + ti];
             }
         }
     }
@@ -7760,7 +8005,8 @@ GLuint CreateTextureFromClipboard(UINT* pw, UINT* ph)
         format = GL_RGBA;
         iformat = GL_BGRA;
         image_mat = Create24bcvMatFrom32bBitmap(hBmp);
-        //imshow("result",image_mat);
+        image_org_mat = image_mat.clone();
+        ApplyBrightnessAndContrast(image_mat);
     }
     else if (bm.bmBitsPixel == 24)
     {
@@ -7798,7 +8044,87 @@ GLuint CreateTextureFromClipboard(UINT* pw, UINT* ph)
     return textureID;
 }
 
-POINT g_ptPicControl; 
+void CapToHMSF(int nframes, UINT8* ph, UINT8* pm, UINT8* ps, UINT8* pf)
+{
+    *ph = (INT8)(nframes / (3600 * image_video_frame_rate));
+    *pm = (INT8)((nframes - *ph * 3600 * image_video_frame_rate) / (60 * image_video_frame_rate));
+    *ps = (INT8)((nframes - (*ph * 3600 + *pm * 60) * image_video_frame_rate) / image_video_frame_rate);
+    *pf = (INT8)(nframes - (*ph * 3600 + *pm * 60 + *ps) * image_video_frame_rate);
+}
+
+double HMSFToDouble(UINT8 h, UINT8 m, UINT8 s, UINT8 f)
+{
+    return (f + image_video_frame_rate * (s + 60 * m + 3600 * h));
+}
+
+void DoubleToHMSF(double dpos, UINT8* ph, UINT8* pm, UINT8* ps, UINT8* pf)
+{
+    *ph = (INT8)(dpos / (3600 * image_video_frame_rate));
+    *pm = (INT8)((dpos - *ph * 3600 * image_video_frame_rate) / (60 * image_video_frame_rate));
+    *ps = (INT8)((dpos - (*ph * 3600 + *pm * 60) * image_video_frame_rate) / image_video_frame_rate);
+    *pf = (INT8)(dpos - (*ph * 3600 + *pm * 60 + *ps) * image_video_frame_rate);
+}
+
+void UpdateHMSF(HWND hDlg)
+{
+    HWND hS = GetDlgItem(hDlg, IDC_VIDEOSLIDER);
+    if (SendMessage(GetDlgItem(hDlg, IDC_HOUR), BM_GETCHECK, 0, 0) == BST_CHECKED)
+    {
+        SendMessage(hS, TBM_SETRANGE, TRUE, MAKELONG(0, image_video_nhours));
+        SendMessage(hS, TBM_SETPOS, TRUE, image_video_hour);
+    }
+    else if (SendMessage(GetDlgItem(hDlg, IDC_MINUTE), BM_GETCHECK, 0, 0) == BST_CHECKED)
+    {
+        if (image_video_hour == image_video_nhours) SendMessage(hS, TBM_SETRANGE, TRUE, MAKELONG(0, image_video_nminutes));
+        else SendMessage(hS, TBM_SETRANGE, TRUE, MAKELONG(0, 60));
+        SendMessage(hS, TBM_SETPOS, TRUE, image_video_minute);
+    }
+    else if (SendMessage(GetDlgItem(hDlg, IDC_SECOND), BM_GETCHECK, 0, 0) == BST_CHECKED)
+    {
+        if ((image_video_hour == image_video_nhours) && (image_video_minute == image_video_nminutes)) SendMessage(hS, TBM_SETRANGE, TRUE, MAKELONG(0, image_video_nseconds));
+        else SendMessage(hS, TBM_SETRANGE, TRUE, MAKELONG(0, 60));
+        SendMessage(hS, TBM_SETPOS, TRUE, image_video_second);
+    }
+    else
+    {
+        if ((image_video_hour == image_video_nhours) && (image_video_minute == image_video_nminutes) && (image_video_second == image_video_nseconds)) SendMessage(hS, TBM_SETRANGE, TRUE, MAKELONG(0, image_video_nframes));
+        else SendMessage(hS, TBM_SETRANGE, TRUE, MAKELONG(0, (int)image_video_frame_rate));
+        SendMessage(hS, TBM_SETPOS, TRUE, image_video_frame);
+    }
+}
+
+void UpdateHMSFfromSlider(HWND hDlg)
+{
+    UINT8 pos = (UINT8)SendMessage(GetDlgItem(hDlg, IDC_VIDEOSLIDER), TBM_GETPOS, 0, 0);
+    if (SendMessage(GetDlgItem(hDlg, IDC_HOUR), BM_GETCHECK, 0, 0) == BST_CHECKED) image_video_hour = pos;
+    else if (SendMessage(GetDlgItem(hDlg, IDC_MINUTE), BM_GETCHECK, 0, 0) == BST_CHECKED) image_video_minute = pos;
+    else if (SendMessage(GetDlgItem(hDlg, IDC_SECOND), BM_GETCHECK, 0, 0) == BST_CHECKED)  image_video_second = pos;
+    else image_video_frame = pos;
+    if (image_video_hour == image_video_nhours)
+    {
+        if (image_video_minute > image_video_nminutes) image_video_minute = image_video_nminutes;
+        if (image_video_minute == image_video_nminutes)
+        {
+            if (image_video_second > image_video_nseconds) image_video_second = image_video_nseconds;
+            if (image_video_second == image_video_nseconds)
+            {
+                if (image_video_frame > image_video_nframes) image_video_frame = image_video_nframes;
+            }
+        }
+    }
+    char tbuf[32];
+    sprintf_s(tbuf, 32, "%i:%02i:%02i:%02i", image_video_hour, image_video_minute, image_video_second, image_video_frame);
+    SetDlgItemTextA(hDlg, IDC_CURSORTIME, tbuf);
+    if (TxImage != (UINT)-1)
+    {
+        glfwMakeContextCurrent(glfwimages);
+        image_mat.release();
+        glDeleteTextures(1, &TxImage);
+    }
+    TxImage = CreateTextureFromVideo(image_video_cap, &width_image, &height_image);
+}
+
+POINT g_ptPicControl;
 INT_PTR CALLBACK Toolbar_Proc3(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message)
@@ -7871,7 +8197,20 @@ INT_PTR CALLBACK Toolbar_Proc3(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             g_ptPicControl.x = rcPicControl.left;
             g_ptPicControl.y = rcPicControl.top;
             EnableWindow(GetDlgItem(hDlg, IDC_VIDEOSLIDER), FALSE);
-            EnableWindow(GetDlgItem(hDlg, IDC_TIMESPIN), FALSE);
+            //EnableWindow(GetDlgItem(hDlg, IDC_TIMESPIN), FALSE);
+            EnableWindow(GetDlgItem(hDlg, IDC_HOUR), FALSE);
+            EnableWindow(GetDlgItem(hDlg, IDC_MINUTE), FALSE);
+            EnableWindow(GetDlgItem(hDlg, IDC_SECOND), FALSE);
+            EnableWindow(GetDlgItem(hDlg, IDC_FRAME), FALSE);
+            EnableWindow(GetDlgItem(hDlg, IDC_FRAMEDUR), FALSE);
+            EnableWindow(GetDlgItem(hDlg, IDC_REGULDUR), FALSE);
+            EnableWindow(GetDlgItem(hDlg, IDC_INTERV), FALSE);
+            SendMessage(GetDlgItem(hDlg, IDC_BRIGHTNESS), TBM_SETRANGE, TRUE, MAKELONG(-50, 50));
+            SendMessage(GetDlgItem(hDlg, IDC_CONTRAST), TBM_SETRANGE, TRUE, MAKELONG(-15, 20));
+            SendMessage(GetDlgItem(hDlg, IDC_BRIGHTNESS), TBM_SETPOS, 0, 0);
+            SendMessage(GetDlgItem(hDlg, IDC_CONTRAST), TBM_SETPOS, 0, 0);
+            SendMessage(GetDlgItem(hDlg, IDC_INTERV), EM_SETLIMITTEXT, 4, 0);
+            image_org_mat.data = NULL;
             return TRUE;
         }
         case WM_LBUTTONDOWN:
@@ -7916,6 +8255,40 @@ INT_PTR CALLBACK Toolbar_Proc3(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             }
             return TRUE;
         }
+        case WM_HSCROLL:
+        {
+            if (!image_loaded) return TRUE;
+            int controlId = GetDlgCtrlID((HWND)lParam);
+            if (controlId == IDC_VIDEOSLIDER) UpdateHMSFfromSlider(hDlg);
+            else if (controlId == IDC_BRIGHTNESS)
+            {
+                image_brightness = (int)SendMessage(GetDlgItem(hDlg, IDC_BRIGHTNESS), TBM_GETPOS, 0, 0);
+                if (TxImage != (UINT)-1)
+                {
+                    glfwMakeContextCurrent(glfwimages);
+                    image_mat.release();
+                    glDeleteTextures(1, &TxImage);
+                }
+                if (image_source_format_video) TxImage = CreateTextureFromVideo(image_video_cap, &width_image, &height_image);
+                else if (!image_org_mat.data) TxImage = CreateTextureFromImage(image_path, &width_image, &height_image);
+                else TxImage = CreateTextureFromMat();
+
+            }
+            else if (controlId == IDC_CONTRAST)
+            {
+                image_contrast = (int)SendMessage(GetDlgItem(hDlg, IDC_CONTRAST), TBM_GETPOS, 0, 0);
+                if (TxImage != (UINT)-1)
+                {
+                    glfwMakeContextCurrent(glfwimages);
+                    image_mat.release();
+                    glDeleteTextures(1, &TxImage);
+                }
+                if (image_source_format_video) TxImage = CreateTextureFromVideo(image_video_cap, &width_image, &height_image);
+                else if (!image_org_mat.data) TxImage = CreateTextureFromImage(image_path, &width_image, &height_image);
+                else TxImage = CreateTextureFromMat();
+            }
+            return TRUE;
+        }
         case WM_COMMAND:
         {
             switch (LOWORD(wParam))
@@ -7944,8 +8317,16 @@ INT_PTR CALLBACK Toolbar_Proc3(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                         if (tmat.data != NULL)
                         {
                             tmat.release();
+                            if (TxImage != (UINT)-1)
+                            {
+                                glfwMakeContextCurrent(glfwimages);
+                                image_mat.release();
+                                if (image_org_mat.data) image_org_mat.release();
+                                glDeleteTextures(1, &TxImage);
+                                if (image_source_format_video) image_video_cap.release();
+                            }
                             image_source_format_video = false;
-                            if (TxImage != (UINT)-1) glDeleteTextures(1, &TxImage);
+                            strcpy_s(image_path, MAX_PATH, ofn.lpstrFile);
                             TxImage = CreateTextureFromImage(ofn.lpstrFile, &width_image, &height_image);
                             float imgratio = (float)width_image / (float)height_image;
                             if (imgratio > (float)ScrW3 / (float)ScrH3)
@@ -7963,19 +8344,71 @@ INT_PTR CALLBACK Toolbar_Proc3(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                         }
                         else
                         {
-                            char tbuf[4096];
-                            strcpy_s(tbuf, 1024, getBuildInformation().c_str());
-                            //char* ptbuf = strstr(tbuf, "Video");
-                            cprintf(tbuf);
-                            image_video_cap.open(ofn.lpstrFile);
-                            cv::Mat tmat;
-                            if (!image_video_cap.read(tmat))
+                            cv::VideoCapture cap(ofn.lpstrFile);
+                            if (!cap.isOpened())
                             {
-                                MessageBoxA(hImages, "The selected file is neither an image nor a video compatible, please choose another one", "Failed", MB_OK);
+                                MessageBoxA(hImages, "Can't open the file", "Failed", MB_OK);
+                                return false;
+                            }
+                            cv::Mat tmat;
+                            cap >> tmat;
+                            if (tmat.empty())
+                            {
+                                cap.release();
+                                tmat.release();
                                 return TRUE;
                             }
-                            image_video_cap.release();
                             tmat.release();
+                            if (TxImage != (UINT)-1)
+                            {
+                                glfwMakeContextCurrent(glfwimages);
+                                image_mat.release();
+                                if (image_org_mat.data) image_org_mat.release();
+                                glDeleteTextures(1, &TxImage);
+                                if (image_source_format_video) image_video_cap.release();
+                            }
+                            image_mat = tmat;
+                            image_source_format_video = true;
+                            image_video_cap.open(ofn.lpstrFile);
+                            image_video_hour = image_video_minute = image_video_second = image_video_frame = 0;
+                            TxImage = CreateTextureFromVideo(image_video_cap, &width_image, &height_image);
+                            EnableWindow(GetDlgItem(hDlg, IDC_VIDEOSLIDER), TRUE);
+                            //EnableWindow(GetDlgItem(hDlg, IDC_TIMESPIN), TRUE);
+                            EnableWindow(GetDlgItem(hDlg, IDC_HOUR), TRUE);
+                            EnableWindow(GetDlgItem(hDlg, IDC_MINUTE), TRUE);
+                            EnableWindow(GetDlgItem(hDlg, IDC_SECOND), TRUE);
+                            EnableWindow(GetDlgItem(hDlg, IDC_FRAME), TRUE);
+                            EnableWindow(GetDlgItem(hDlg, IDC_FRAMEDUR), TRUE);
+                            EnableWindow(GetDlgItem(hDlg, IDC_REGULDUR), TRUE);
+                            EnableWindow(GetDlgItem(hDlg, IDC_INTERV), FALSE);
+                            CheckDlgButton(hDlg, IDC_HOUR, TRUE);
+                            CheckDlgButton(hDlg, IDC_MINUTE, FALSE);
+                            CheckDlgButton(hDlg, IDC_SECOND, FALSE);
+                            CheckDlgButton(hDlg, IDC_FRAME, FALSE);
+                            CheckDlgButton(hDlg, IDC_FRAMEDUR, TRUE);
+                            CheckDlgButton(hDlg, IDC_REGULDUR, FALSE);
+                            SetDlgItemTextA(hDlg, IDC_CURSORTIME, "0:00:00:00");
+                            int total_frames = (int)cap.get(cv::CAP_PROP_FRAME_COUNT);
+                            CapToHMSF(total_frames, &image_video_nhours, &image_video_nminutes, &image_video_nseconds, &image_video_nframes);
+                            UpdateHMSF(hDlg);
+                            SendMessage(GetDlgItem(hDlg, IDC_VIDEOSLIDER), TBM_SETTICFREQ, 1, 0);
+                            char tbuf[32];
+                            sprintf_s(tbuf, 32, "%i:%02i:%02i:%02i", image_video_nhours, image_video_nminutes, image_video_nseconds, image_video_nframes);
+                            SetDlgItemTextA(hDlg, IDC_TOTALTIME, tbuf);
+                            SetDlgItemTextA(hDlg, IDC_CURSORTIME, "0:00:00:00");
+                            float imgratio = (float)width_image / (float)height_image;
+                            if (imgratio > (float)ScrW3 / (float)ScrH3)
+                            {
+                                image_sizeW = ScrW3;
+                                image_sizeH = (UINT)((float)image_sizeW / imgratio);
+                            }
+                            else
+                            {
+                                image_sizeH = ScrH3;
+                                image_sizeW = (UINT)((float)image_sizeH * imgratio);
+                            }
+                            image_posx = (ScrW3 - image_sizeW) / 2;
+                            image_posy = (ScrH3 - image_sizeH) / 2;
                         }
                     }
                     GetSelectionSize(&XSelection, &YSelection, &WSelection, &HSelection, &NSelection);
@@ -7983,11 +8416,18 @@ INT_PTR CALLBACK Toolbar_Proc3(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                 }
                 case IDC_CBPASTE:
                 {
-                    if (TxImage != (UINT)-1) glDeleteTextures(1, &TxImage);
+                    if (TxImage != (UINT)-1)
+                    {
+                        glfwMakeContextCurrent(glfwimages);
+                        image_mat.release();
+                        if (image_org_mat.data) image_org_mat.release();
+                        glDeleteTextures(1, &TxImage);
+                        if (image_source_format_video) image_video_cap.release();
+                    }
+                    image_source_format_video = false;
                     TxImage = CreateTextureFromClipboard(&width_image, &height_image);
                     if (TxImage == (UINT)-1) return TRUE;
                     float imgratio = (float)width_image / (float)height_image;
-                    //UINT width, height, x, y;
                     if (imgratio > (float)ScrW3 / (float)ScrH3)
                     {
                         image_sizeW = ScrW3;
@@ -8028,19 +8468,133 @@ INT_PTR CALLBACK Toolbar_Proc3(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                     }
                     SaveAction(true, SA_DRAW);
                     float ratio = (float)width_image / (float)image_sizeW;
-                    cv::Rect croprect((int)(crop_offsetx* ratio), (int)(crop_offsety* ratio), (int)(crop_sizeW* ratio), (int)(crop_sizeH* ratio));
-                    cv::Mat croppedimg = image_mat(croprect);
-                    cv::Mat tmp;
-                    cv::resize(croppedimg, tmp, cv::Size(WSelection, HSelection), 0, 0, cv::INTER_LANCZOS4);
-                    croppedimg.release();
-                    unsigned char palette[64 * 3];
-                    unsigned char image[256 * 64];
-                    if (image_ncolsel > NSelection) image_ncolsel = NSelection;
-                    ReduceRGB24ToNColorsImage(tmp, image_ncolsel, palette, image);
-                    tmp.release();
-                    CopyImageToSelection(palette, image);
+                    if ((!image_source_format_video) || (nSelFrames == 1) || (SendMessage(GetDlgItem(hDlg, IDC_CURFRAMEALL), BM_GETCHECK, 0, 0) == BST_CHECKED))
+                    {
+                        EnableWindow(GetDlgItem(hDlg, IDC_COPY), FALSE);
+                        cv::Rect croprect((int)(crop_offsetx * ratio), (int)(crop_offsety * ratio), (int)(crop_sizeW * ratio), (int)(crop_sizeH * ratio));
+                        cv::Mat croppedimg = image_mat(croprect);
+                        cv::Mat tmp;
+                        cv::resize(croppedimg, tmp, cv::Size(WSelection, HSelection), 0, 0, cv::INTER_LANCZOS4);
+                        croppedimg.release();
+                        unsigned char palette[64 * 3];
+                        unsigned char image[256 * 64];
+                        if (image_ncolsel > NSelection) image_ncolsel = NSelection;
+                        ReduceRGB24ToNColorsImage(tmp, image_ncolsel, palette, image);
+                        tmp.release();
+                        CopyImageToSelection(palette, image);
+                        EnableWindow(GetDlgItem(hDlg, IDC_COPY), TRUE);
+                    }
+                    else
+                    {
+                        // we look for the continuous range of frames around the current displayed frame
+                        MessageBoxA(hImages, "This method will only copy elements of the video to the continuous range of frame selected around the current displayed one, all other selected ones will be ignored", "Warning", MB_OK);
+                        EnableWindow(GetDlgItem(hDlg, IDC_COPY), FALSE);
+                        unsigned int preframe = acFrame, derframe = acFrame;
+                        bool frfound = true;
+                        while (frfound)
+                        {
+                            frfound = false;
+                            for (UINT ti = 0; ti < nSelFrames; ti++)
+                            {
+                                if (preframe > 0)
+                                {
+                                    if (SelFrames[ti] == preframe - 1)
+                                    {
+                                        preframe--;
+                                        frfound = true;
+                                    }
+                                }
+                                if (derframe < MycRom.nFrames - 1)
+                                {
+                                    if (SelFrames[ti] == derframe + 1)
+                                    {
+                                        derframe++;
+                                        frfound = true;
+                                    }
+                                }
+                            }
+                        }
+                        double acpos = HMSFToDouble(image_video_hour, image_video_minute, image_video_second, image_video_frame);
+                        double finpos= HMSFToDouble(image_video_nhours, image_video_nminutes, image_video_nseconds, image_video_nframes);
+                        double msstep = image_video_frame_rate / 1000.0; // frames/ms
+                        double interv;
+                        UINT8 ih = image_video_hour, im = image_video_minute, is = image_video_second, ifr = image_video_frame;
+                        UINT iinterv;
+                        if (SendMessage(GetDlgItem(hDlg, IDC_REGULDUR), BM_GETCHECK, 0, 0) == BST_CHECKED)
+                        {
+                            char tbuf[8];
+                            GetDlgItemTextA(hDlg, IDC_INTERV, tbuf, 8);
+                            iinterv = (UINT)atoi(tbuf);
+                            interv = (double)iinterv;
+                            if (interv < 5)
+                            {
+                                SetDlgItemTextA(hDlg, IDC_INTERV, "5");
+                                MessageBoxA(hImages, "The value in the interval was too low, it has been reset, confirm again", "Error", MB_OK);
+                                return TRUE;
+                            }
+                            else if (interv > 3000)
+                            {
+                                SetDlgItemTextA(hDlg, IDC_INTERV, "3000");
+                                MessageBoxA(hImages, "The value in the interval was too high, it has been reset, confirm again", "Error", MB_OK);
+                                return TRUE;
+                            }
+                            interv *= msstep;
+                        }
+                        do
+                        {
+                            DoubleToHMSF(acpos, &image_video_hour, &image_video_minute, &image_video_second, &image_video_frame);
+                            image_mat.release();
+                            CreateMatFromVideo(image_video_cap);
+                            cv::Rect croprect((int)(crop_offsetx* ratio), (int)(crop_offsety* ratio), (int)(crop_sizeW* ratio), (int)(crop_sizeH* ratio));
+                            cv::Mat croppedimg = image_mat(croprect);
+                            cv::Mat tmp;
+                            cv::resize(croppedimg, tmp, cv::Size(WSelection, HSelection), 0, 0, cv::INTER_LANCZOS4);
+                            croppedimg.release();
+                            unsigned char palette[64 * 3];
+                            unsigned char image[256 * 64];
+                            if (image_ncolsel > NSelection) image_ncolsel = NSelection;
+                            ReduceRGB24ToNColorsImage(tmp, image_ncolsel, palette, image);
+                            tmp.release();
+                            CopyImageTo1Selection(palette, image, preframe);
+                            if (SendMessage(GetDlgItem(hDlg, IDC_FRAMEDUR), BM_GETCHECK, 0, 0) == BST_CHECKED)
+                                acpos += MycRP.FrameDuration[preframe] * msstep;
+                            else
+                                acpos += interv;
+                            preframe++;
+                        } while ((preframe <= derframe) || (acpos>finpos));
+                        image_video_hour = ih;
+                        image_video_minute = im;
+                        image_video_second = is;
+                        image_video_frame = ifr;
+                        CreateMatFromVideo(image_video_cap);
+                    }
                     InvalidateRect(GetDlgItem(hwTB3, IDC_COLORS), NULL, TRUE);
+                    EnableWindow(GetDlgItem(hDlg, IDC_COPY), TRUE);
                     UpdateSSneeded = true;
+                    return TRUE;
+                }
+                case IDC_HOUR:
+                case IDC_MINUTE:
+                case IDC_SECOND:
+                case IDC_FRAME:
+                {
+                    UpdateHMSF(hDlg);
+                    return TRUE;
+                }
+                /*case IDC_TIMESPIN:
+                {
+
+                    return TRUE;
+                }*/
+                case IDC_FRAMEDUR:
+                {
+                    EnableWindow(GetDlgItem(hDlg, IDC_INTERV), FALSE);
+                    return TRUE;
+                }
+                case IDC_REGULDUR:
+                {
+                    EnableWindow(GetDlgItem(hDlg, IDC_INTERV), TRUE);
+                    SetDlgItemTextA(hDlg, IDC_INTERV, "20");
                     return TRUE;
                 }
             }
