@@ -76,8 +76,18 @@
 #define IDI_ICON10                      255
 #define IDI_SPRTOFRAME                  255
 #define IDI_TRIALPHA                    256
-#define IDI_ICON12                      257
 #define IDI_DELSELSAME                  257
+#define IDD_FILTERS                     258
+#define IDI_NIGHTDAY                    259
+#define IDD_IMGDLG                      259
+#define IDB_PNG2                        261
+#define IDI_CLIPIMAGE                   262
+#define IDI_DELIMAGE                    263
+#define IDI_LOADIMAGE                   264
+#define IDI_ZOOMIN                      265
+#define IDI_ZOOMOUT                     266
+#define IDI_DOWNSCALE                   267
+#define IDI_UPSCALE                     268
 #define IDC_COLMODE                     1000
 #define IDC_COLMODE2                    1001
 #define IDC_NEW                         1001
@@ -111,14 +121,17 @@
 #define IDC_DELDETSPR                   1017
 #define IDC_COLSET                      1018
 #define IDC_TOFRAME                     1018
+#define IDC_ZOOMIN                      1018
 #define IDC_NOMCOLSET1                  1019
 #define IDC_DRAWPOINT2                  1019
 #define IDC_COPYCOLS                    1019
+#define IDC_ZOOMOUT                     1019
 #define IDC_NOMCOLSET2                  1020
 #define IDC_PASTE                       1020
 #define IDC_PASTECUR                    1020
 #define IDC_NOMCOLSET3                  1021
 #define IDC_PASTE2                      1021
+#define IDC_NIGHTDAY                    1021
 #define IDC_NOMCOLSET4                  1022
 #define IDC_NOMCOLSET5                  1023
 #define IDC_DYNACOLSET                  1023
@@ -168,6 +181,7 @@
 #define IDC_STRY7                       1059
 #define IDC_STRY18                      1059
 #define IDC_STRY8                       1060
+#define IDC_STRY19                      1060
 #define IDC_STRY9                       1061
 #define IDC_STRY10                      1062
 #define IDC_SHAPEMODE                   1063
@@ -240,10 +254,43 @@
 #define IDC_IDENT                       1115
 #define IDC_BUTTON2                     1115
 #define IDC_FRUSEMASK                   1116
+#define IDC_STRY20                      1116
 #define IDC_INVERTSEL3                  1117
+#define IDC_SCROLLFILL                  1117
 #define IDC_TRIGID                      1118
+#define IDC_DELTIME                     1118
 #define IDC_ADDTID                      1119
+#define IDC_TIMELEN                     1119
 #define IDC_DELTID                      1120
+#define IDC_DELCOL                      1120
+#define IDC_DELMASK                     1121
+#define IDC_FRUSESPRITE                 1123
+#define IDC_NCOL                        1124
+#define IDC_BROWSEIMAGE                 1126
+#define IDC_CBPASTE                     1128
+#define IDC_VIDEOSLIDER                 1129
+#define IDC_CURSORTIME                  1130
+#define IDC_TOTALTIME                   1131
+#define IDC_SPIN1                       1132
+#define IDC_TIMESPIN                    1132
+#define IDC_HOURSPIN                    1132
+#define IDC_MINSPIN                     1133
+#define IDC_HOUR                        1133
+#define IDC_SECSPIN                     1134
+#define IDC_MINUTE                      1134
+#define IDC_HOURSPINIDC_HOURSPIN4       1135
+#define IDC_FRMSPIN                     1135
+#define IDC_SECOND                      1135
+#define IDC_FRAME                       1136
+#define IDC_REGULDUR                    1142
+#define IDC_INTERV                      1143
+#define IDC_FRAMEDUR                    1144
+#define IDC_CURFRAMEALL                 1145
+#define IDC_CONTRAST                    1151
+#define IDC_CONTRAST2                   1152
+#define IDC_BRIGHTNESS                  1152
+#define IDC_STATICB                     1153
+#define IDC_STATICC                     1154
 #define IDC_STATIC                      -1
 
 // Next default values for new objects
@@ -251,9 +298,9 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
-#define _APS_NEXT_RESOURCE_VALUE        258
+#define _APS_NEXT_RESOURCE_VALUE        269
 #define _APS_NEXT_COMMAND_VALUE         32776
-#define _APS_NEXT_CONTROL_VALUE         1118
+#define _APS_NEXT_CONTROL_VALUE         1155
 #define _APS_NEXT_SYMED_VALUE           110
 #endif
 #endif

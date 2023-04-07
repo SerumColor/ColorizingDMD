@@ -36,7 +36,7 @@ using namespace cv;
 #pragma region Global_Variables
 
 #define MAJ_VERSION 1
-#define MIN_VERSION 25
+#define MIN_VERSION 26
 #define PATCH_VERSION 0
 
 static TCHAR szWindowClass[] = _T("ColorizingDMD");
@@ -2984,21 +2984,35 @@ void Sprite_Strip_Update(void)
     acSSText = !(acSSText); // equivalent to "x xor 1"
 }
 
+void CopyPalette(UINT sfr, UINT dfr)
+{
+    memcpy_s(&MycRom.cPal[dfr * 3 * MycRom.ncColors], 3 * MycRom.ncColors, &MycRom.cPal[sfr * 3 * MycRom.ncColors], 3 * MycRom.ncColors);
+}
+
 void CopyRows(UINT sfr, UINT sfrrow, UINT dfr, UINT dfrrow, UINT nrows)
 {
+    CopyPalette(sfr, dfr);
     memcpy_s(&MycRom.cFrames[dfr * MycRom.fWidth * MycRom.fHeight + dfrrow * MycRom.fWidth], nrows * MycRom.fWidth,
         &MycRom.cFrames[sfr * MycRom.fWidth * MycRom.fHeight + sfrrow * MycRom.fWidth], nrows * MycRom.fWidth);
+    memcpy_s(&MycRom.DynaMasks[dfr * MycRom.fWidth * MycRom.fHeight + dfrrow * MycRom.fWidth], nrows * MycRom.fWidth,
+        &MycRom.DynaMasks[sfr * MycRom.fWidth * MycRom.fHeight + sfrrow * MycRom.fWidth], nrows * MycRom.fWidth);
 }
 
 void CopyCols(UINT sfr, UINT sfrcol, UINT dfr, UINT dfrcol, UINT ncols)
 {
+    CopyPalette(sfr, dfr);
     UINT8* ps = &MycRom.cFrames[sfr * MycRom.fWidth * MycRom.fHeight + sfrcol];
     UINT8* pd = &MycRom.cFrames[dfr * MycRom.fWidth * MycRom.fHeight + dfrcol];
+    UINT8* psd = &MycRom.DynaMasks[sfr * MycRom.fWidth * MycRom.fHeight + sfrcol];
+    UINT8* pdd = &MycRom.DynaMasks[dfr * MycRom.fWidth * MycRom.fHeight + dfrcol];
     for (UINT ti = 0; ti < MycRom.fHeight; ti++)
     {
         memcpy_s(pd, ncols, ps, ncols);
-        *ps += MycRom.fWidth;
-        *pd += MycRom.fWidth;
+        memcpy_s(pdd, ncols, psd, ncols);
+        ps += MycRom.fWidth;
+        pd += MycRom.fWidth;
+        psd += MycRom.fWidth;
+        pdd += MycRom.fWidth;
     }
 }
 
@@ -3049,6 +3063,10 @@ void AutoFillScrolling(void)
             for (UINT ti = 0; ti < MycRom.fHeight; ti++)
             {
                 rowCRC32acfr[ti] = crc32_fast(&MycRP.oFrames[tk * MycRom.fWidth * MycRom.fHeight + ti * MycRom.fWidth], MycRom.fWidth, FALSE);
+            }
+            for (UINT ti = 0; ti < MycRom.fWidth; ti++)
+            {
+                colCRC32acfr[ti] = crc32_fast_step(&MycRP.oFrames[tk * MycRom.fWidth * MycRom.fHeight + ti], MycRom.fWidth, MycRom.fHeight, FALSE);
             }
             // camera moving downward?
             bool allgood;
