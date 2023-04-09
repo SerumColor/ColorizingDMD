@@ -38,7 +38,7 @@ using namespace cv;
 
 #define MAJ_VERSION 1
 #define MIN_VERSION 26
-#define PATCH_VERSION 0
+#define PATCH_VERSION 1
 
 static TCHAR szWindowClass[] = _T("ColorizingDMD");
 static TCHAR szWindowClass2[] = _T("ChildWin");
@@ -3999,8 +3999,9 @@ bool Save_cRom(bool autosave, bool fastsave)
         //char tbuf1[MAX_PATH];
         char tbuf2[MAX_PATH];
         sprintf_s(tbuf2, MAX_PATH, "%s%s.cRZ", Dir_Serum, MycRom.name);
-        ZipCreateFileA(&hz, tbuf, 0);
-        ZipAddFileA(hz, tbuf, tbuf2);
+        ZipCreateFileA(&hz, tbuf2, 0);
+        sprintf_s(tbuf2, MAX_PATH, "%s.cRom", MycRom.name);
+        ZipAddFileA(hz, tbuf2, tbuf);
         ZipClose(hz);
     }
     return true;
