@@ -29,6 +29,7 @@ using namespace Gdiplus;
 #include "LiteZip.h"
 #include <opencv2/opencv.hpp>
 using namespace cv;
+#include <gif_lib.h>
 //#include <MagickWand/MagickWand.h>
 
 #pragma endregion Includes
@@ -62,8 +63,10 @@ bool isLoadedProject = false; // is there a project loaded?
 HIMAGELIST g_hImageList = NULL, g_hImageListD = NULL;
 bool Night_Mode = false;
 
-char DumpDir[MAX_PATH] = "D:\\visual pinball\\VPinMame\\dmddump\\";
-bool Ask_for_SaveDir = true;
+//char DumpDir[MAX_PATH] = "D:\\visual pinball\\VPinMame\\dmddump\\";
+//bool Ask_for_SaveDir = true;
+bool NewProj; // is this a new project and we have to ask for the destination path even with a Ctrl+S
+char Dir_Dumps[MAX_PATH], Dir_Images[MAX_PATH], Dir_Serum[MAX_PATH], Dir_GIFs[MAX_PATH]; // different paths we need to keep
 
 cRom_struct MycRom = { "",0,0,0,0,0,NULL,NULL,NULL,NULL,NULL,NULL,NULL };
 cRP_struct MycRP = { "",{FALSE},{0},0,0,{0},FALSE,0,FALSE };
@@ -3167,6 +3170,170 @@ void AutoFillScrolling(void)
     }
 }
 
+#define MUL_SIZE_GIF 5
+
+void DrawImagePix(UINT8* pimage, UINT pixnb, UINT8 pcol, UINT sizepix)
+{
+    UINT8* pPix = &pimage[(pixnb / MycRom.fWidth) * sizepix * MycRom.fWidth * sizepix + (pixnb % MycRom.fWidth) * sizepix];
+    for (UINT ti = 0; ti < sizepix - 1; ti++)
+    {
+        for (UINT tj = 0; tj < sizepix - 1; tj++)
+        {
+            if (((ti != 0) || (tj != 0)) && ((ti != 0) || (tj != sizepix - 2)) && ((ti != sizepix - 2) || (tj != 0)) && ((ti != sizepix - 2) || (tj != sizepix - 2)))
+            {
+                pPix[tj * sizepix * MycRom.fWidth + ti] = pcol;
+            }
+        }
+    }
+
+}
+
+bool CreateGIF(char* GIFname, unsigned char* pimages, unsigned char* ppalettes, unsigned int* pdurations, int nimages, int width, int height)
+{
+    int error;
+    GifFileType* gif = EGifOpenFileName(GIFname, false, &error);
+    if (gif == NULL) {
+        cprintf("Error opening file %s\n", GIFname);
+        return false;
+    }
+
+    // Write the screen descriptor
+    ColorMapObject* global_cmap = NULL;
+    if (EGifPutScreenDesc(gif, width, height, 8, 0, global_cmap) == GIF_ERROR)
+    {
+        cprintf("Error writing screen descriptor\n");
+        EGifCloseFile(gif, &error);
+        return false;
+    }
+
+    // Write each frame
+    for (int i = 0; i < nimages; i++) {
+        // Create a local color map for the frame
+        ColorMapObject* local_cmap = GifMakeMapObject(64, (const GifColorType*)&ppalettes[i * 64 * 3]);
+        if (local_cmap == NULL) {
+            cprintf("Error creating local color map for frame %d\n", i);
+            EGifCloseFile(gif, &error);
+            return false;
+        }
+
+        // Write the image descriptor
+        if (EGifPutImageDesc(gif, 0, 0, width, height, false, local_cmap) == GIF_ERROR) {
+            cprintf("Error writing image descriptor for frame %d\n", i);
+            GifFreeMapObject(local_cmap);
+            EGifCloseFile(gif, &error);
+            return false;
+        }
+
+        // Write the image data
+        if (EGifPutLine(gif, &pimages[i * width * height], width * height) == GIF_ERROR) {
+            cprintf("Error writing image data for frame %d\n", i);
+            GifFreeMapObject(local_cmap);
+            EGifCloseFile(gif, &error);
+            return false;
+        }
+
+        // Set the frame duration
+        int duration = pdurations[i] / 10; // Convert duration from ms to 1/100th sec
+        if (duration > 0)
+        {
+            unsigned char ext[] = { 0x04, (unsigned char)(duration & 0xFF), (unsigned char)(duration >> 8), 0x00 };
+            if (EGifPutExtension(gif, GRAPHICS_EXT_FUNC_CODE, sizeof(ext), (const void*)ext) == GIF_ERROR)
+            {
+                cprintf("Error setting frame duration for frame %d\n", i);
+                EGifCloseFile(gif, &error);
+                return false;
+            }
+        }
+        GifFreeMapObject(local_cmap);
+    }
+
+    EGifCloseFile(gif, &error);
+    return true;
+}
+
+void SaveAnimatedGif(void)
+{
+    // we check the selected frames in a continuous chunk around the current displayed one
+    UINT firstfr = acFrame, lastfr = acFrame;
+    bool frfound = true;
+    while (frfound)
+    {
+        frfound = false;
+        for (UINT ti = 0; ti < nSelFrames; ti++)
+        {
+            if ((firstfr > 0) && (SelFrames[ti] == firstfr - 1))
+            {
+                firstfr--;
+                frfound = true;
+            }
+            if ((lastfr < MycRom.nFrames - 1) && (SelFrames[ti] == lastfr + 1))
+            {
+                lastfr++;
+                frfound = true;
+            }
+        }
+    }
+    UINT32 nimages = lastfr - firstfr + 1;
+    UINT8* pimages = (UINT8*)malloc(nimages * MUL_SIZE_GIF * MycRom.fWidth * MUL_SIZE_GIF * MycRom.fHeight);
+    UINT32* pdurations = (UINT32*)malloc(nimages * sizeof(UINT32));
+    if ((!pimages) || (!pdurations))
+    {
+        if (pimages) free(pimages);
+        if (pdurations) free(pdurations);
+        MessageBoxA(hWnd, "Could not get memory to calculated images from frames", "Failed", MB_OK);
+        return;
+    }
+    memset(pimages, 0, nimages * MUL_SIZE_GIF * MycRom.fWidth * MUL_SIZE_GIF * MycRom.fHeight);
+    for (UINT ti = firstfr; ti <= lastfr; ti++)
+    {
+        for (UINT tj = 0; tj < MycRom.fWidth * MycRom.fHeight; tj++)
+        {
+            UINT8 pcol;
+            if (MycRom.DynaMasks[ti * MycRom.fWidth * MycRom.fHeight + tj] == 255)
+                pcol = MycRom.cFrames[ti * MycRom.fWidth * MycRom.fHeight + tj];
+            else
+                pcol = MycRom.Dyna4Cols[ti * MAX_DYNA_SETS_PER_FRAME * MycRom.noColors + MycRom.DynaMasks[ti * MycRom.fWidth * MycRom.fHeight + tj] * MycRom.noColors + MycRP.oFrames[ti * MycRom.fWidth * MycRom.fHeight + tj]];
+            DrawImagePix(&pimages[(ti - firstfr) * MycRom.fWidth * MUL_SIZE_GIF * MycRom.fHeight * MUL_SIZE_GIF], tj, pcol, MUL_SIZE_GIF);
+        }
+        pdurations[ti - firstfr] = MycRP.FrameDuration[ti]; // frameDelay is an array that stores the delay for each frame
+    }
+    char szFile[260];
+    strcpy_s(szFile, 260, Dir_GIFs);
+    strcat_s(szFile, 260, "*.gif");
+    OPENFILENAMEA ofn;
+    ZeroMemory(&ofn, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.lpstrTitle = "Saving Animated GIF...";
+    ofn.hwndOwner = hWnd;
+    ofn.lpstrFile = szFile;
+    ofn.lpstrFile[0] = '\0';
+    ofn.nMaxFile = sizeof(szFile);
+    ofn.lpstrFilter = "Animated Image (.gif)\0*.GIF\0";
+    ofn.nFilterIndex = 1;
+    ofn.lpstrInitialDir = Dir_GIFs;
+    ofn.Flags = OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT;
+
+    if (GetSaveFileNameA(&ofn) == TRUE)
+    {
+        strcpy_s(Dir_GIFs, 260, ofn.lpstrFile);
+        int i = (int)strlen(Dir_GIFs) - 1;
+        while ((i > 0) && (Dir_GIFs[i] != '\\')) i--;
+        Dir_GIFs[i + 1] = 0;
+        SavePaths();
+    }
+    else
+    {
+        cprintf("The Serum file was not saved");
+        return;
+    }
+    size_t sln = strlen(ofn.lpstrFile);
+    if (((ofn.lpstrFile[sln - 1] != 'f') && (ofn.lpstrFile[sln - 1] != 'F')) || ((ofn.lpstrFile[sln - 2] != 'i') && (ofn.lpstrFile[sln - 2] != 'I')) || ((ofn.lpstrFile[sln - 3] != 'g') && (ofn.lpstrFile[sln - 3] != 'G')) || (ofn.lpstrFile[sln - 4] != '.'))
+        strcat_s(ofn.lpstrFile, MAX_PATH, ".gif");
+    CreateGIF(ofn.lpstrFile, pimages, &MycRom.cPal[firstfr * MycRom.ncColors * 3], pdurations, nimages, MycRom.fWidth * MUL_SIZE_GIF, MycRom.fHeight * MUL_SIZE_GIF);
+    free(pimages);
+    free(pdurations);
+}
+
 void Draw_Sprite(void)
 {
     if ((MycRom.name[0] == 0) || (MycRom.nSprites == 0)) return;
@@ -3457,16 +3624,6 @@ void Free_cRom(void)
             free(MycRom.SpriteDescriptions);
             MycRom.SpriteDescriptions = NULL;
         }
-        /*if (MycRom.SpriteDetectDwords)
-        {
-            free(MycRom.SpriteDetectDwords);
-            MycRom.SpriteDetectDwords = NULL;
-        }
-        if (MycRom.SpriteDetectDwordPos)
-        {
-            free(MycRom.SpriteDetectDwordPos);
-            MycRom.SpriteDetectDwordPos = NULL;
-        }*/
         if (MycRom.SpriteDetDwords)
         {
             free(MycRom.SpriteDetDwords);
@@ -3492,31 +3649,34 @@ void Free_Project(void)
     InitVariables();
 }
 
-void LoadSaveDir(void)
+void SavePaths(void)
 {
-    FILE* pfile;
-    if (fopen_s(&pfile, "SaveDir.pos", "rb") != 0)
+    HKEY tKey;
+    LSTATUS ls = RegCreateKeyExA(HKEY_CURRENT_USER, "SOFTWARE\\ColorizingDMD", 0, NULL, 0, KEY_WRITE, NULL, &tKey, NULL);
+    if (ls == ERROR_SUCCESS)
     {
-        //cprintf("No save directory file found, using default");
-        strcpy_s(MycRP.SaveDir, 260, DumpDir);
-        Ask_for_SaveDir = true;
-        return;
+        RegSetValueExA(tKey, "DIR_DUMPS", 0, REG_SZ, (const BYTE*)Dir_Dumps, (DWORD)strlen(Dir_Dumps)+1);
+        RegSetValueExA(tKey, "DIR_IMAGES", 0, REG_SZ, (const BYTE*)Dir_Images, (DWORD)strlen(Dir_Images) + 1);
+        RegSetValueExA(tKey, "DIR_SERUM", 0, REG_SZ, (const BYTE*)Dir_Serum, (DWORD)strlen(Dir_Serum) + 1);
+        RegSetValueExA(tKey, "DIR_GIFS", 0, REG_SZ, (const BYTE*)Dir_GIFs, (DWORD)strlen(Dir_GIFs) + 1);
     }
-    fread(MycRP.SaveDir, 1, MAX_PATH, pfile);
-    Ask_for_SaveDir = false;
-    fclose(pfile);
 }
 
-void SaveSaveDir(void)
+void LoadPaths(void)
 {
-    FILE* pfile;
-    if (fopen_s(&pfile, "SaveDir.pos", "wb") != 0)
+    HKEY tKey;
+    LSTATUS ls = RegOpenKeyExA(HKEY_CURRENT_USER, "SOFTWARE\\ColorizingDMD", 0, KEY_READ, &tKey);
+    if (ls == ERROR_SUCCESS)
     {
-        cprintf("Error while saving save directory file");
-        return;
+        DWORD size = 260;
+        RegGetValueA(tKey, NULL, "DIR_DUMPS", RRF_RT_ANY, 0, Dir_Dumps, &size);
+        size = 260;
+        RegGetValueA(tKey, NULL, "DIR_IMAGES", RRF_RT_ANY, 0, Dir_Images, &size);
+        size = 260;
+        RegGetValueA(tKey, NULL, "DIR_SERUM", RRF_RT_ANY, 0, Dir_Serum, &size);
+        size = 260;
+        RegGetValueA(tKey, NULL, "DIR_GIFS", RRF_RT_ANY, 0, Dir_GIFs, &size);
     }
-    fwrite(MycRP.SaveDir, 1, MAX_PATH, pfile);
-    fclose(pfile);
 }
 
 void SaveWindowPosition(void)
@@ -3678,7 +3838,7 @@ bool Set_Detection_Dwords(void)
     return true;
 }
 
-bool Save_cRom(bool autosave)
+bool Save_cRom(bool autosave, bool fastsave)
 {
     if (MycRom.name[0] == 0) return true;
     // Calculating the frame hashcodes
@@ -3695,62 +3855,97 @@ bool Save_cRom(bool autosave)
     }
     // Calculating the sprites detection DWords
     if (!Set_Detection_Dwords()) return false;
-    if ((GetKeyState(VK_SHIFT) & 0x8000) || (Ask_for_SaveDir == true))
-    {
-        BROWSEINFOA bi;
-        bi.hwndOwner = hWnd;
-        bi.pidlRoot = NULL;
-        //char tbuf2[MAX_PATH];
-        bi.pszDisplayName = MycRP.SaveDir;
-        bi.lpszTitle = "Choose a save directory...";
-        bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
-        bi.lpfn = NULL;
-        bi.iImage = 0;
-        LPITEMIDLIST piil;
-        piil = SHBrowseForFolderA(&bi);
-        if (!piil) return false;
-        Ask_for_SaveDir = false;
-        SHGetPathFromIDListA(piil, MycRP.SaveDir);
-        if (MycRP.SaveDir[strlen(MycRP.SaveDir) - 1] != '\\') strcat_s(MycRP.SaveDir, MAX_PATH, "\\");
-        CoTaskMemFree(piil);
-    }
-    // Save the cRom file
+
     char tbuf[MAX_PATH];
-    if (!autosave) sprintf_s(tbuf, MAX_PATH, "%s%s.cROM", MycRP.SaveDir, MycRom.name); else sprintf_s(tbuf, MAX_PATH, "%s%s(auto).cROM", MycRP.SaveDir, MycRom.name);
+    if ((!fastsave && !autosave) || NewProj)
+    {
+        char acDir[260];
+        GetCurrentDirectoryA(260, acDir);
+
+        char szFile[260];
+        strcpy_s(szFile, 260, Dir_Serum);
+        strcat_s(szFile, 260, MycRom.name);
+        strcat_s(szFile, 260, ".cROM");
+        OPENFILENAMEA ofn;
+        ZeroMemory(&ofn, sizeof(ofn));
+        ofn.lStructSize = sizeof(ofn);
+        ofn.lpstrTitle = "Saving Serum...";
+        ofn.hwndOwner = hWnd;
+        ofn.lpstrFile = szFile;
+        ofn.nMaxFile = sizeof(szFile);
+        ofn.lpstrFilter = "Serum (.crom)\0*.CROM\0";
+        ofn.nFilterIndex = 1;
+        ofn.lpstrInitialDir = Dir_Serum;
+        ofn.Flags = OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT;
+
+        if (GetSaveFileNameA(&ofn) == TRUE)
+        {
+            strcpy_s(tbuf, 260, ofn.lpstrFile);
+            strcpy_s(Dir_Serum, 260, ofn.lpstrFile);
+            int i = (int)strlen(Dir_Serum) - 1;
+            while ((i > 0) && (Dir_Serum[i] != '\\')) i--;
+            Dir_Serum[i + 1] = 0;
+            SavePaths();
+        }
+        else
+        {
+            cprintf("The Serum file was not saved");
+            return false;
+        }
+    }
+    else
+    {
+        if (!autosave) sprintf_s(tbuf, MAX_PATH, "%s%s.cROM", Dir_Serum, MycRom.name); else sprintf_s(tbuf, MAX_PATH, "%s%s(auto).cROM", Dir_Serum, MycRom.name);
+    }
     FILE* pfile;
     if (fopen_s(&pfile, tbuf, "wb") != 0)
     {
-        if (!(GetKeyState(VK_SHIFT) & 0x8000) && (Ask_for_SaveDir == false) && (!autosave))
+        if (fastsave || autosave)
         {
-            BROWSEINFOA bi;
-            bi.hwndOwner = hWnd;
-            bi.pidlRoot = NULL;
-            //char tbuf2[MAX_PATH];
-            bi.pszDisplayName = MycRP.SaveDir;
-            bi.lpszTitle = "Choose a save directory...";
-            bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
-            bi.lpfn = NULL;
-            bi.iImage = 0;
-            LPITEMIDLIST piil;
-            piil = SHBrowseForFolderA(&bi);
-            if (!piil) return false;
-            Ask_for_SaveDir = false;
-            SHGetPathFromIDListA(piil, MycRP.SaveDir);
-            if (MycRP.SaveDir[strlen(MycRP.SaveDir) - 1] != '\\') strcat_s(MycRP.SaveDir, MAX_PATH, "\\");
-            CoTaskMemFree(piil);
-            sprintf_s(tbuf, MAX_PATH, "%s%s.cROM", MycRP.SaveDir, MycRom.name);
+            OPENFILENAMEA ofn;
+            char szFile[260];
+            strcpy_s(szFile, 260, Dir_Serum);
+            strcat_s(szFile, 260, MycRom.name);
+            strcat_s(szFile, 260, ".cROM");
+            ZeroMemory(&ofn, sizeof(ofn));
+            ofn.lStructSize = sizeof(ofn);
+            ofn.lpstrTitle = "Saving Serum...";
+            ofn.hwndOwner = hWnd;
+            ofn.lpstrFile = szFile;
+            ofn.nMaxFile = sizeof(szFile);
+            ofn.lpstrFilter = "Serum (.crom)\0*.CROM\0";
+            ofn.nFilterIndex = 1;
+            ofn.lpstrInitialDir = Dir_Serum;
+            ofn.Flags = OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT;
+
+            if (GetSaveFileNameA(&ofn) == TRUE)
+            {
+                strcpy_s(Dir_Serum, 260, ofn.lpstrFile);
+                int i = (int)strlen(Dir_Serum) - 1;
+                while ((i > 0) && (Dir_Serum[i] != '\\')) i--;
+                Dir_Serum[i + 1] = 0;
+                SavePaths();
+            }
+            else
+            {
+                cprintf("The Serum file was not saved");
+                return false;
+            }
             if (fopen_s(&pfile, tbuf, "wb") != 0)
             {
-                AffLastError((char*)"Save_cRom:fopen_s");
+                MessageBoxA(hWnd, "Unable to save the Serum project, save again and check you chose a directory where you have write rights", "Failed", MB_OK);
+                NewProj = true;
                 return false;
             }
         }
         else
         {
-            AffLastError((char*)"Save_cRom:fopen_s");
+            MessageBoxA(hWnd, "Unable to save the Serum project, save again and check you chose a directory where you have write rights", "Failed", MB_OK);
+            NewProj = true;
             return false;
         }
     }
+    NewProj = false;
     // we set to 0 to the content of the cframes where it's dynamic content to avoid keeping original frames values where unneeded
     for (UINT ti = 0; ti < MycRom.nFrames; ti++)
     {
@@ -3801,12 +3996,11 @@ bool Save_cRom(bool autosave)
     HZIP hz;
     if (!autosave)
     {
-        sprintf_s(tbuf, MAX_PATH, "%s%s.cRZ", MycRP.SaveDir, MycRom.name);
-        ZipCreateFileA(&hz, tbuf, 0);
+        //char tbuf1[MAX_PATH];
         char tbuf2[MAX_PATH];
-        sprintf_s(tbuf, MAX_PATH, "%s%s.cRom", MycRP.SaveDir, MycRom.name);
-        sprintf_s(tbuf2, MAX_PATH, "%s.cRom", MycRom.name);
-        ZipAddFileA(hz, tbuf2, tbuf);// tbuf2);
+        sprintf_s(tbuf2, MAX_PATH, "%s%s.cRZ", Dir_Serum, MycRom.name);
+        ZipCreateFileA(&hz, tbuf, 0);
+        ZipAddFileA(hz, tbuf, tbuf2);
         ZipClose(hz);
     }
     return true;
@@ -3814,10 +4008,7 @@ bool Save_cRom(bool autosave)
 
 bool Load_cRom(char* name)
 {
-    // cROM must be loaded before cRP
     Free_cRom();
-/*    char tbuf[MAX_PATH];
-    sprintf_s(tbuf, MAX_PATH, "%s%s", DumpDir, name);*/
     FILE* pfile;
     if (fopen_s(&pfile, name, "rb") != 0)
     {
@@ -3902,7 +4093,7 @@ bool Save_cRP(bool autosave)
 {
     if (MycRP.name[0] == 0) return true;
     char tbuf[MAX_PATH];
-    if (!autosave) sprintf_s(tbuf, MAX_PATH, "%s%s.cRP", MycRP.SaveDir, MycRP.name); else sprintf_s(tbuf, MAX_PATH, "%s%s(auto).cRP", MycRP.SaveDir, MycRP.name);
+    if (!autosave) sprintf_s(tbuf, MAX_PATH, "%s%s.cRP", Dir_Serum, MycRP.name); else sprintf_s(tbuf, MAX_PATH, "%s%s(auto).cRP", Dir_Serum, MycRP.name);
     FILE* pfile;
     if (fopen_s(&pfile, tbuf, "wb") != 0)
     {
@@ -3928,7 +4119,8 @@ bool Save_cRP(bool autosave)
     fwrite(MycRP.Sprite_Col_From_Frame, sizeof(UINT32), 255, pfile);
     fwrite(MycRP.FrameDuration, sizeof(UINT32), MycRom.nFrames, pfile);
     fwrite(MycRP.Sprite_Edit_Colors, 1, 16 * 255, pfile);
-    fwrite(MycRP.SaveDir, 1, 260, pfile);
+    char SaveDir[260] = "";
+    fwrite(SaveDir, 1, 260, pfile);
     fwrite(MycRP.SpriteRect, sizeof(UINT16), 4 * 255, pfile);
     fwrite(MycRP.SpriteRectMirror, sizeof(BOOL), 2 * 255, pfile);
     fclose(pfile);
@@ -3984,7 +4176,8 @@ bool Load_cRP(char* name)
     for (UINT ti = 0; ti < MycRom.nFrames; ti++) MycRP.FrameDuration[ti] = 0;
     fread(MycRP.FrameDuration, sizeof(UINT32), MycRom.nFrames, pfile);
     fread(MycRP.Sprite_Edit_Colors, 1, 16 * 255, pfile);
-    fread(MycRP.SaveDir, 1, 260, pfile);
+    char SaveDir[260];
+    fread(SaveDir, 1, 260, pfile);
     memset(MycRP.SpriteRect, 255, sizeof(UINT16) * 4 * 255);
     fread(MycRP.SpriteRect, sizeof(UINT16), 4 * 255, pfile);
     fread(MycRP.SpriteRectMirror, sizeof(BOOL), 2 * 255, pfile);
@@ -4626,26 +4819,30 @@ void Load_TXT_File(void)
 
     // Load a txt file as a base for a new project
     OPENFILENAMEA ofn;
-    char szFile[260]={0};
+    char szFile[260];
+    LoadPaths();
+    strcpy_s(szFile, 260, Dir_Dumps);
+    strcat_s(szFile, 260, "*.txt");
 
     ZeroMemory(&ofn, sizeof(ofn));
     ofn.lStructSize = sizeof(ofn);
     ofn.lpstrTitle = "Choose the initial TXT file";
     ofn.hwndOwner = hWnd;
     ofn.lpstrFile = szFile;
-    ofn.lpstrFile[0] = '\0';
     ofn.nMaxFile = sizeof(szFile);
     ofn.lpstrFilter = "Text (.txt)\0*.TXT\0";
     ofn.nFilterIndex = 1;
-    ofn.lpstrInitialDir = DumpDir;
+    ofn.lpstrInitialDir = Dir_Dumps;
     ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
 
     if (GetOpenFileNameA(&ofn) == TRUE)
     {
-        strcpy_s(MycRP.SaveDir, 260, ofn.lpstrFile);
-        int i = (int)strlen(MycRP.SaveDir) - 1;
-        while ((i > 0) && (MycRP.SaveDir[i] != '\\')) i--;
-        MycRP.SaveDir[i + 1] = 0;
+        strcpy_s(Dir_Dumps, 260, ofn.lpstrFile);
+        int i = (int)strlen(Dir_Dumps) - 1;
+        while ((i > 0) && (Dir_Dumps[i] != '\\')) i--;
+        Dir_Dumps[i + 1] = 0;
+        NewProj = true;
+        SavePaths();
         if (isLoadedProject)
         {
             if (MessageBox(hWnd, L"Confirm you want to close the current project and load a new one", L"Caution", MB_YESNO) == IDYES)
@@ -4842,23 +5039,29 @@ void Add_TXT_File(void)
     // Add frames to the project with a new txt file
     OPENFILENAMEA ofn;
     char szFile[260];
+    strcpy_s(szFile, 260, Dir_Dumps);
+    strcat_s(szFile, 260, "*.txt");
 
     ZeroMemory(&ofn, sizeof(ofn));
     ofn.lpstrTitle = "Choose the additional TXT file";
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = hWnd;
     ofn.lpstrFile = szFile;
-    ofn.lpstrFile[0] = '\0';
     ofn.nMaxFile = sizeof(szFile);
     ofn.lpstrFilter = "Text (.txt)\0*.TXT\0";
     ofn.nFilterIndex = 1;
     ofn.lpstrFileTitle = NULL;
     ofn.nMaxFileTitle = 0;
-    ofn.lpstrInitialDir = MycRP.SaveDir;
+    ofn.lpstrInitialDir = Dir_Dumps;
     ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
 
     if (GetOpenFileNameA(&ofn) == TRUE)
     {
+        strcpy_s(Dir_Dumps, MAX_PATH, ofn.lpstrFile);
+        int i = (int)strlen(Dir_Dumps) - 1;
+        while ((i > 0) && (Dir_Dumps[i] != '\\')) i--;
+        Dir_Dumps[i + 1] = 0;
+        SavePaths();
         FILE* pfile;
         if (fopen_s(&pfile, ofn.lpstrFile, "rb") != 0)
         {
@@ -6209,6 +6412,8 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 SetWindowSubclass(GetDlgItem(hDlg, IDC_MASKLIST2), ButtonSubclassProc, 0, 0);
                 SetWindowSubclass(GetDlgItem(hDlg, IDC_MOVESECTION), ButtonSubclassProc, 0, 0);
                 SetWindowSubclass(GetDlgItem(hDlg, IDC_SECTIONLIST), ButtonSubclassProc, 0, 0);
+                HFONT hFont = CreateFont(12, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Arial");
+                SendMessage(GetDlgItem(hDlg, IDC_SAMEFRAME), WM_SETFONT, WPARAM(hFont), TRUE);
             }
             else
             {
@@ -6423,10 +6628,10 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 case IDC_SAVE:
                 {
                     if (MycRom.name[0] == 0) return TRUE;
-                    if (Save_cRom(false))
+                    if (Save_cRom(false, false))
                     {
-                        cprintf("%s.cROM saved in %s", MycRom.name, MycRP.SaveDir);
-                        if (Save_cRP(false)) cprintf("%s.cRP saved in %s", MycRom.name, MycRP.SaveDir);
+                        cprintf("%s.cROM saved in %s", MycRom.name, Dir_Serum);
+                        if (Save_cRP(false)) cprintf("%s.cRP saved in %s", MycRom.name, Dir_Serum);
                     }
                     return TRUE;
                 }
@@ -6435,18 +6640,18 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                     char acDir[260],acFile[260];
                     GetCurrentDirectoryA(260, acDir);
                     OPENFILENAMEA ofn;
-                    char szFile[260] = { 0 };
-
+                    char szFile[260];
+                    strcpy_s(szFile, 260, Dir_Serum);
+                    strcat_s(szFile, 260, "*.crom");
                     ZeroMemory(&ofn, sizeof(ofn));
                     ofn.lStructSize = sizeof(ofn);
                     ofn.lpstrTitle = "Choose the project file";
                     ofn.hwndOwner = hWnd;
                     ofn.lpstrFile = szFile;
-                    ofn.lpstrFile[0] = '\0';
                     ofn.nMaxFile = sizeof(szFile);
-                    ofn.lpstrFilter = "Colorized ROM\0*.cROM\0";
+                    ofn.lpstrFilter = "Serum (*.crom)\0*.cROM\0";
                     ofn.nFilterIndex = 1;
-                    ofn.lpstrInitialDir = MycRP.SaveDir;
+                    ofn.lpstrInitialDir = Dir_Serum;
                     ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
 
                     if (GetOpenFileNameA(&ofn) == TRUE)
@@ -6463,6 +6668,11 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                                 return TRUE;
                             }
                         }
+                        strcpy_s(Dir_Serum, 260, ofn.lpstrFile);
+                        int i = (int)strlen(Dir_Serum) - 1;
+                        while ((i > 0) && (Dir_Serum[i] != '\\')) i--;
+                        Dir_Serum[i + 1] = 0;
+                        SavePaths();
                         strcpy_s(acFile, 260, ofn.lpstrFile);
                         if (strstr(acFile, "(auto)") != NULL)
                         {
@@ -7193,6 +7403,11 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                     AutoFillScrolling();
                     return TRUE;
                 }
+                case IDC_GENAGIF:
+                {
+                    SaveAnimatedGif();
+                    return TRUE;
+                }
             }
             break;
         }
@@ -7592,10 +7807,10 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             case IDC_SAVE:
             {
                 if (MycRom.name[0] == 0) return TRUE;
-                if (Save_cRom(false))
+                if (Save_cRom(false, false))
                 {
-                    cprintf("%s.cROM saved in %s", MycRom.name, MycRP.SaveDir);
-                    if (Save_cRP(false)) cprintf("%s.cRP saved in %s", MycRom.name, MycRP.SaveDir);
+                    cprintf("%s.cROM saved in %s", MycRom.name, Dir_Serum);
+                    if (Save_cRP(false)) cprintf("%s.cRP saved in %s", MycRom.name, Dir_Serum);
                 }
                 return TRUE;
             }
@@ -8531,22 +8746,28 @@ INT_PTR CALLBACK Toolbar_Proc3(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                 {
                     // Load a txt file as a base for a new project
                     OPENFILENAMEA ofn;
-                    char szFile[260] = { 0 };
+                    char szFile[260];
+                    strcpy_s(szFile, 260, Dir_Images);
+                    strcat_s(szFile, 260, "*.jpg");
 
                     ZeroMemory(&ofn, sizeof(ofn));
                     ofn.lStructSize = sizeof(ofn);
                     ofn.lpstrTitle = "Choose an image file";
                     ofn.hwndOwner = hImages;
                     ofn.lpstrFile = szFile;
-                    ofn.lpstrFile[0] = '\0';
                     ofn.nMaxFile = sizeof(szFile);
                     ofn.lpstrFilter = "Image (.jpg;.jpeg;.png;.bmp)\0*.jpg;*.jpeg;*.png;*.bmp\0Video (.avi;.mpg;.mpeg;.mp4;.mov)\0*.avi;*.mpg;*.mpeg;*.mp4;*.mov\0";
                     ofn.nFilterIndex = 1;
-                    ofn.lpstrInitialDir = DumpDir;
+                    ofn.lpstrInitialDir = Dir_Images;
                     ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
 
                     if (GetOpenFileNameA(&ofn) == TRUE)
                     {
+                        strcpy_s(Dir_Images, 260, ofn.lpstrFile);
+                        int i = (int)strlen(Dir_Images) - 1;
+                        while ((i > 0) && (Dir_Images[i] != '\\')) i--;
+                        Dir_Images[i + 1] = 0;
+                        SavePaths();
                         Mat tmat=imread(ofn.lpstrFile);
                         if (tmat.data != NULL)
                         {
@@ -8923,8 +9144,11 @@ void CheckAccelerators(void)
                 if ((isSReleased) && (GetKeyState('S') & 0x8000))
                 {
                     isSReleased = false;
-                    Save_cRP(false);
-                    Save_cRom(false);
+                    if (Save_cRom(false, true))
+                    {
+                        cprintf("%s.cROM saved in %s", MycRom.name, Dir_Serum);
+                        if (Save_cRP(false)) cprintf("%s.cRP saved in %s", MycRom.name, Dir_Serum);
+                    }
                 }
                 if ((isZReleased) && (GetKeyState('Z') & 0x8000))
                 {
@@ -8940,7 +9164,7 @@ void CheckAccelerators(void)
                 {
                     isMReleased = false;
                     Edit_Mode = !Edit_Mode;
-                    Update_Toolbar = true;// CreateToolbar();
+                    Update_Toolbar = true;
                     UpdateFSneeded = true;
                 }
                 if ((isAReleased) && (GetKeyState('A') & 0x8000))
@@ -9067,8 +9291,11 @@ void CheckAccelerators(void)
                 if ((isSReleased) && (GetKeyState('S') & 0x8000))
                 {
                     isSReleased = false;
-                    Save_cRP(false);
-                    Save_cRom(false);
+                    if (Save_cRom(false, true))
+                    {
+                        cprintf("%s.cROM saved in %s", MycRom.name, Dir_Serum);
+                        if (Save_cRP(false)) cprintf("%s.cRP saved in %s", MycRom.name, Dir_Serum);
+                    }
                 }
                 if ((isVReleased) && (GetKeyState('V') & 0x8000))
                 {
@@ -10093,7 +10320,6 @@ bool CreateToolbar(void)
         SetIcon(GetDlgItem(hwTB, IDC_DELSECTION), IDI_DELTAB);
         SetIcon(GetDlgItem(hwTB, IDC_COLTODYNA), IDI_COLTODYNA);
         SetIcon(GetDlgItem(hwTB, IDC_INVERTSEL2), IDI_INVERTSEL);
-        //SetIcon(GetDlgItem(hwTB, IDC_INVERTSEL3), IDI_INVERTSEL);
         SetIcon(GetDlgItem(hwTB, IDC_MOVESECTION), IDI_MOVESECTION);
         SetIcon(GetDlgItem(hwTB, IDC_ADDSPRITE2), IDI_ADDSPR);
         SetIcon(GetDlgItem(hwTB, IDC_DELSPRITE2), IDI_DELSPR);
@@ -10125,6 +10351,8 @@ bool CreateToolbar(void)
         SetWindowPos(GetDlgItem(hwTB, IDC_STRY16), 0, 0, 0, 5, 100, SWP_NOMOVE | SWP_NOZORDER);
         SetWindowLong(GetDlgItem(hwTB, IDC_STRY20), GWL_STYLE, WS_BORDER | WS_CHILD | WS_VISIBLE | SS_BLACKRECT);
         SetWindowPos(GetDlgItem(hwTB, IDC_STRY20), 0, 0, 0, 5, 100, SWP_NOMOVE | SWP_NOZORDER);
+        //SetWindowLong(GetDlgItem(hwTB, IDC_STRY21), GWL_STYLE, WS_BORDER | WS_CHILD | WS_VISIBLE | SS_BLACKRECT);
+        //SetWindowPos(GetDlgItem(hwTB, IDC_STRY21), 0, 0, 0, 5, 100, SWP_NOMOVE | SWP_NOZORDER);
         if (MycRom.name[0] != 0)
         {
             if (MycRP.Fill_Mode == TRUE) SendMessage(GetDlgItem(hwTB, IDC_FILLED), BM_SETCHECK, BST_CHECKED, 0); else SendMessage(GetDlgItem(hwTB, IDC_FILLED), BM_SETCHECK, BST_UNCHECKED, 0);
@@ -10427,6 +10655,15 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
     hInst = hInstance;
 
+    GetModuleFileNameA(NULL, Dir_Serum, MAX_PATH);
+    int i = (int)strlen(Dir_Serum) - 1;
+    while ((i > 0) && (Dir_Serum[i] != '\\')) i--;
+    Dir_Serum[i + 1] = 0;
+    strcpy_s(Dir_Dumps, MAX_PATH, Dir_Serum);
+    strcpy_s(Dir_GIFs, MAX_PATH, Dir_Serum);
+    strcpy_s(Dir_Images, MAX_PATH, Dir_Serum);
+    LoadPaths();
+
     INITCOMMONCONTROLSEX icex;
     icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
     icex.dwICC = ICC_UPDOWN_CLASS;
@@ -10532,6 +10769,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     ShowWindow(hImages, SW_SHOW);
     UpdateWindow(hImages);
     hStatus3 = DoCreateStatusBar(hImages, hInst);
+
     LoadWindowPosition();
 
     WNDCLASSEX child;
@@ -10581,8 +10819,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     glfwSetCursorPosCallback(glfwimages, mouse_move_callback3);
     glfwSetScrollCallback(glfwimages, mouse_scroll_callback3);
 
-    LoadSaveDir();
-
     if (!CreateToolbar()) return -1;
     if (!CreateToolbar2()) return -1;
     if (!CreateToolbar3()) return -1;
@@ -10630,10 +10866,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             DWORD acCount = GetTickCount();
             if ((acCount < tickCount) || (acCount - tickCount > AUTOSAVE_TICKS))
             {
-                if (Save_cRom(true))
+                if (Save_cRom(true, false))
                 {
-                    cprintf("%s.cROM autosaved in %s", MycRom.name, MycRP.SaveDir);
-                    if (Save_cRP(true)) cprintf("%s.cRP autosaved in %s", MycRom.name, MycRP.SaveDir);
+                    cprintf("%s.cROM autosaved in %s", MycRom.name, Dir_Serum);
+                    if (Save_cRP(true)) cprintf("%s.cRP autosaved in %s", MycRom.name, Dir_Serum);
                 }
                 tickCount = acCount;
             }
@@ -11086,7 +11322,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         }
         CheckAccelerators();
     }
-    SaveSaveDir();
+    SavePaths();
     free(RedoSave);
     free(UndoSave);
     if (pFrameStrip) free(pFrameStrip);
