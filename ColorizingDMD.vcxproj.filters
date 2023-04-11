@@ -33,6 +33,9 @@
     <ClInclude Include="OGL_Immediate_2D.h">
       <Filter>Fichiers d%27en-tête</Filter>
     </ClInclude>
+    <ClInclude Include="stb_image_write.h">
+      <Filter>Fichiers d%27en-tête</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ColorizingDMD.cpp">
@@ -199,6 +202,42 @@
       <Filter>Fichiers de ressources</Filter>
     </Image>
     <Image Include="icons\delselsamefr.ico">
+      <Filter>Fichiers de ressources</Filter>
+    </Image>
+    <Image Include="icons\nightday.ico">
+      <Filter>Fichiers de ressources</Filter>
+    </Image>
+    <Image Include="ColorizingDMD\icons\col3.png">
+      <Filter>Fichiers de ressources</Filter>
+    </Image>
+    <Image Include="ColorizingDMD\icons\icon1.ico">
+      <Filter>Fichiers de ressources</Filter>
+    </Image>
+    <Image Include="icons\clipimage.ico">
+      <Filter>Fichiers de ressources</Filter>
+    </Image>
+    <Image Include="icons\delimage.ico">
+      <Filter>Fichiers de ressources</Filter>
+    </Image>
+    <Image Include="icons\loadimage.ico">
+      <Filter>Fichiers de ressources</Filter>
+    </Image>
+    <Image Include="icons\zoomin.ico">
+      <Filter>Fichiers de ressources</Filter>
+    </Image>
+    <Image Include="icons\zoomout.ico">
+      <Filter>Fichiers de ressources</Filter>
+    </Image>
+    <Image Include="icons\downscale.ico">
+      <Filter>Fichiers de ressources</Filter>
+    </Image>
+    <Image Include="icons\upscale.ico">
+      <Filter>Fichiers de ressources</Filter>
+    </Image>
+    <Image Include="icons\ellipse.png">
+      <Filter>Fichiers de ressources</Filter>
+    </Image>
+    <Image Include="icons\ellipse.ico">
       <Filter>Fichiers de ressources</Filter>
     </Image>
   </ItemGroup>

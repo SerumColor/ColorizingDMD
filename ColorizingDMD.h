@@ -43,3 +43,6 @@ bool MaskUsed(UINT32 nomask);
 LRESULT CALLBACK Filter_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam);
 void UpdateSpriteList2(void);
 void UpdateSpriteList3(void);
+void GetSelectionSize(UINT* px, UINT* py, UINT* pw, UINT* ph, UINT* pn);
+void mouse_scroll_callback3(GLFWwindow* window, double xoffset, double yoffset);
+void SavePaths(void);
