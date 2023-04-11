@@ -30,15 +30,14 @@ using namespace Gdiplus;
 #include <opencv2/opencv.hpp>
 using namespace cv;
 #include <gif_lib.h>
-//#include <MagickWand/MagickWand.h>
 
 #pragma endregion Includes
 
 #pragma region Global_Variables
 
 #define MAJ_VERSION 1
-#define MIN_VERSION 26
-#define PATCH_VERSION 1
+#define MIN_VERSION 27
+#define PATCH_VERSION 0
 
 static TCHAR szWindowClass[] = _T("ColorizingDMD");
 static TCHAR szWindowClass2[] = _T("ChildWin");
@@ -954,6 +953,7 @@ void CopyColAndDynaCol(UINT fromframe, UINT toframe)
 
 bool Is_Used_Color(UINT nofr, UINT8 nocol)
 {
+    //if (nofr >= MycRom.nFrames) return false;
     // check if a color is used in a frame cFrame or dynamasks
     for (UINT ti = 0; ti < MycRom.fWidth * MycRom.fHeight; ti++)
     {
@@ -1314,7 +1314,9 @@ void Delete_Frame(UINT32 nofr)
         UpdateNewacFrame();
         UpdateFSneeded = true;
     }
+    if (acFrame >= MycRom.nFrames) acFrame = MycRom.nFrames - 1;
     if ((PreFrameInStrip > (int)nofr) && (PreFrameInStrip > 0)) PreFrameInStrip--;
+    if (PreFrameInStrip >= (int)MycRom.nFrames) PreFrameInStrip = MycRom.nFrames - 1;
     MycRom.HashCode = (UINT32*)realloc(MycRom.HashCode, MycRom.nFrames * sizeof(UINT32));
     MycRom.CompMaskID = (UINT8*)realloc(MycRom.CompMaskID, MycRom.nFrames);
     MycRom.MovRctID = (UINT8*)realloc(MycRom.MovRctID, MycRom.nFrames);
@@ -2026,6 +2028,20 @@ void drawAllOctantsF(int xc, int yc, int xp, int yp, UINT8* surface, UINT8 color
     }
 }
 
+void drawAllQuadrantsF(int xc, int yc, int xp, int yp, UINT8* surface, UINT8 color, bool coloronly, byte* frame)
+{
+    for (int x = 0; x <= xp; x++)
+    {
+        for (int y = 0; y <= yp; y++)
+        {
+            putpixel(xc + x, yc + y, surface, color, coloronly, frame);
+            putpixel(xc - x, yc + y, surface, color, coloronly, frame);
+            putpixel(xc + x, yc - y, surface, color, coloronly, frame);
+            putpixel(xc - x, yc - y, surface, color, coloronly, frame);
+        }
+    }
+}
+
 void drawAllOctants(int xc, int yc, int x, int y, UINT8* surface, UINT8 color, bool coloronly, byte* frame)
 {
     putpixel(xc + x, yc + y, surface, color, coloronly, frame);
@@ -2036,6 +2052,14 @@ void drawAllOctants(int xc, int yc, int x, int y, UINT8* surface, UINT8 color, b
     putpixel(xc - y, yc + x, surface, color, coloronly, frame);
     putpixel(xc + y, yc - x, surface, color, coloronly, frame);
     putpixel(xc - y, yc - x, surface, color, coloronly, frame);
+}
+
+void drawAllQuadrants(int xc, int yc, int x, int y, UINT8* surface, UINT8 color, bool coloronly, byte* frame)
+{
+    putpixel(xc + x, yc + y, surface, color, coloronly, frame);
+    putpixel(xc - x, yc + y, surface, color, coloronly, frame);
+    putpixel(xc + x, yc - y, surface, color, coloronly, frame);
+    putpixel(xc - x, yc - y, surface, color, coloronly, frame);
 }
 
 
@@ -2067,6 +2091,69 @@ void drawAllOctants2(int xc, int yc, int x, int y, UINT8* surface, UINT8 color)
     putpixel2(xc - y, yc + x, surface, color);
     putpixel2(xc + y, yc - x, surface, color);
     putpixel2(xc - y, yc - x, surface, color);
+}
+
+void drawellipse(int xc, int yc, int rx, int ry, UINT8* surface, UINT8 color, BOOL filled, bool coloronly, byte* frame)
+{
+        float dx, dy, d1, d2, x, y;
+        x = 0;
+        y = (float)ry;
+
+        // Initial decision parameter of region 1
+        d1 = (ry * ry)
+            - (rx * rx * ry)
+            + (0.25f * rx * rx);
+        dx = 2 * ry * ry * x;
+        dy = 2 * rx * rx * y;
+
+        // For region 1
+        while (dx < dy) {
+
+            // Print points based on 4-way symmetry
+            if (!filled) drawAllQuadrants(xc, yc, (int)x, (int)y, surface, color, coloronly, frame); else drawAllQuadrantsF(xc, yc, (int)x, (int)y, surface, color, coloronly, frame);
+
+            // Checking and updating value of
+            // decision parameter based on algorithm
+            if (d1 < 0) {
+                x++;
+                dx = dx + (2 * ry * ry);
+                d1 = d1 + dx + (ry * ry);
+            }
+            else {
+                x++;
+                y--;
+                dx = dx + (2 * ry * ry);
+                dy = dy - (2 * rx * rx);
+                d1 = d1 + dx - dy + (ry * ry);
+            }
+        }
+
+        // Decision parameter of region 2
+        d2 = ((ry * ry) * ((x + 0.5f) * (x + 0.5f)))
+            + ((rx * rx) * ((y - 1) * (y - 1)))
+            - (rx * rx * ry * ry);
+
+        // Plotting points of region 2
+        while (y >= 0) {
+
+            // printing points based on 4-way symmetry
+            if (!filled) drawAllQuadrants(xc, yc, (int)x, (int)y, surface, color, coloronly, frame); else drawAllQuadrantsF(xc, yc, (int)x, (int)y, surface, color, coloronly, frame);
+
+            // Checking and updating parameter
+            // value based on algorithm
+            if (d2 > 0) {
+                y--;
+                dy = dy - (2 * rx * rx);
+                d2 = d2 + (rx * rx) - dy;
+            }
+            else {
+                y--;
+                x++;
+                dx = dx + (2 * ry * ry);
+                dy = dy - (2 * rx * rx);
+                d2 = d2 + dx - dy + (rx * rx);
+            }
+        }
 }
 
 void drawcircle(int xc, int yc, int r, UINT8* surface, UINT8 color, BOOL filled, bool coloronly, byte* frame)
@@ -3191,6 +3278,78 @@ void DrawImagePix(UINT8* pimage, UINT pixnb, UINT8 pcol, UINT sizepix)
 bool CreateGIF(char* GIFname, unsigned char* pimages, unsigned char* ppalettes, unsigned int* pdurations, int nimages, int width, int height)
 {
     int error;
+    GifFileType* gif = EGifOpenFileName(GIFname, true, &error);
+    if (gif == NULL) {
+        cprintf("Error opening file %s\n", GIFname);
+        return false;
+    }
+
+    // Set the GIF version to 89a
+    EGifSetGifVersion(gif, true);
+
+    // Write the screen descriptor
+    ColorMapObject* global_cmap = NULL;
+    if (EGifPutScreenDesc(gif, width, height, 8, 0, global_cmap) == GIF_ERROR)
+    {
+        cprintf("Error writing screen descriptor\n");
+        EGifCloseFile(gif, &error);
+        return false;
+    }
+    // Add Netscape Application Extension block for infinite loop in version 89a
+    unsigned char ext[] = { 0x21, 0xFF, 0x0B, 'N', 'E', 'T', 'S', 'C', 'A', 'P', 'E', '2', '.', '0', 0x03, 0x01, 0x00, 0x00, 0x00 };
+    if (EGifPutExtension(gif, 0xff, sizeof(ext), (const void*)ext) == GIF_ERROR) {
+        cprintf("Error setting loop count\n");
+        EGifCloseFile(gif, &error);
+        return false;
+    }
+
+    // Write each frame
+    for (int i = 0; i < nimages; i++) {
+        // Create a local color map for the frame
+        ColorMapObject* local_cmap = GifMakeMapObject(64, (const GifColorType*)&ppalettes[i * 64 * 3]);
+        if (local_cmap == NULL) {
+            cprintf("Error creating local color map for frame %d\n", i);
+            EGifCloseFile(gif, &error);
+            return false;
+        }
+
+        // Write the image descriptor
+        if (EGifPutImageDesc(gif, 0, 0, width, height, false, local_cmap) == GIF_ERROR) {
+            cprintf("Error writing image descriptor for frame %d\n", i);
+            GifFreeMapObject(local_cmap);
+            EGifCloseFile(gif, &error);
+            return false;
+        }
+
+        // Write the image data
+        if (EGifPutLine(gif, &pimages[i * width * height], width * height) == GIF_ERROR) {
+            cprintf("Error writing image data for frame %d\n", i);
+            GifFreeMapObject(local_cmap);
+            EGifCloseFile(gif, &error);
+            return false;
+        }
+
+        // Set the frame duration
+        int duration = pdurations[i] / 10; // Convert duration from ms to 1/100th sec
+        if (duration > 0)
+        {
+            unsigned char ext[] = { 0x04, (unsigned char)(duration & 0xFF), (unsigned char)(duration >> 8), 0x00 };
+            if (EGifPutExtension(gif, GRAPHICS_EXT_FUNC_CODE, sizeof(ext), (const void*)ext) == GIF_ERROR)
+            {
+                cprintf("Error setting frame duration for frame %d\n", i);
+                EGifCloseFile(gif, &error);
+                return false;
+            }
+        }
+        GifFreeMapObject(local_cmap);
+    }
+    EGifCloseFile(gif, &error);
+    return true;
+}
+    
+    /*bool CreateGIF(char* GIFname, unsigned char* pimages, unsigned char* ppalettes, unsigned int* pdurations, int nimages, int width, int height)
+{
+    int error;
     GifFileType* gif = EGifOpenFileName(GIFname, false, &error);
     if (gif == NULL) {
         cprintf("Error opening file %s\n", GIFname);
@@ -3246,13 +3405,21 @@ bool CreateGIF(char* GIFname, unsigned char* pimages, unsigned char* ppalettes, 
         }
         GifFreeMapObject(local_cmap);
     }
+    // Add Netscape Application Extension block for infinite loop
+    unsigned char ext[] = { 0x21, 0xFF, 0x0B, 'A', 'P', 'P', 'L', 'I', 'C', 'A', 'T', 'I', 'O', 'N', 0x03, 0x01, 0x00, 0x00, 0x00 };
+    if (EGifPutExtension(gif, 0x21, sizeof(ext), (const void*)ext) == GIF_ERROR) {
+        cprintf("Error setting loop count\n");
+        EGifCloseFile(gif, &error);
+        return false;
+    }
 
     EGifCloseFile(gif, &error);
     return true;
-}
+}*/
 
 void SaveAnimatedGif(void)
 {
+    if (MycRom.name[0] == 0) return;
     // we check the selected frames in a continuous chunk around the current displayed one
     UINT firstfr = acFrame, lastfr = acFrame;
     bool frfound = true;
@@ -3649,13 +3816,40 @@ void Free_Project(void)
     InitVariables();
 }
 
+void SaveVars(void)
+{
+    HKEY tKey;
+    LSTATUS ls = RegCreateKeyExA(HKEY_CURRENT_USER, "SOFTWARE\\ColorizingDMD", 0, NULL, 0, KEY_WRITE, NULL, &tKey, NULL);
+    if (ls == ERROR_SUCCESS)
+    {
+        DWORD nm = 0;
+        if (Night_Mode) nm = 1;
+        RegSetValueExA(tKey, "VAR_DARKMODE", 0, REG_DWORD, (const BYTE*)&nm, 4);
+    }
+}
+
+void LoadVars(void)
+{
+    HKEY tKey;
+    LSTATUS ls = RegOpenKeyExA(HKEY_CURRENT_USER, "SOFTWARE\\ColorizingDMD", 0, KEY_READ, &tKey);
+    Night_Mode = false;
+    if (ls == ERROR_SUCCESS)
+    {
+        DWORD size = 4;
+        DWORD val;
+        RegGetValueA(tKey, NULL, "VAR_DARKMODE", RRF_RT_REG_DWORD, 0, &val, &size);
+        if (val == 0) Night_Mode = true; else Night_Mode = false; // opposite as following SendMessage change the state
+        SendMessage(hwTB, WM_COMMAND, IDC_NIGHTDAY, 0);
+    }
+}
+
 void SavePaths(void)
 {
     HKEY tKey;
     LSTATUS ls = RegCreateKeyExA(HKEY_CURRENT_USER, "SOFTWARE\\ColorizingDMD", 0, NULL, 0, KEY_WRITE, NULL, &tKey, NULL);
     if (ls == ERROR_SUCCESS)
     {
-        RegSetValueExA(tKey, "DIR_DUMPS", 0, REG_SZ, (const BYTE*)Dir_Dumps, (DWORD)strlen(Dir_Dumps)+1);
+        RegSetValueExA(tKey, "DIR_DUMPS", 0, REG_SZ, (const BYTE*)Dir_Dumps, (DWORD)strlen(Dir_Dumps) + 1);
         RegSetValueExA(tKey, "DIR_IMAGES", 0, REG_SZ, (const BYTE*)Dir_Images, (DWORD)strlen(Dir_Images) + 1);
         RegSetValueExA(tKey, "DIR_SERUM", 0, REG_SZ, (const BYTE*)Dir_Serum, (DWORD)strlen(Dir_Serum) + 1);
         RegSetValueExA(tKey, "DIR_GIFS", 0, REG_SZ, (const BYTE*)Dir_GIFs, (DWORD)strlen(Dir_GIFs) + 1);
@@ -6233,6 +6427,7 @@ void EnableDrawButtons(void)
     EnableWindow(GetDlgItem(hwTB, IDC_DRAWRECT), TRUE);
     EnableWindow(GetDlgItem(hwTB, IDC_DRAWCIRC), TRUE);
     EnableWindow(GetDlgItem(hwTB, IDC_FILL), TRUE);
+    EnableWindow(GetDlgItem(hwTB, IDC_ELLIPSE), TRUE);
 }
 
 void DisableDrawButtons(void)
@@ -6241,7 +6436,7 @@ void DisableDrawButtons(void)
     //EnableWindow(GetDlgItem(hwTB, IDC_DRAWLINE), FALSE);
     EnableWindow(GetDlgItem(hwTB, IDC_DRAWRECT), FALSE);
     //EnableWindow(GetDlgItem(hwTB, IDC_DRAWCIRC), FALSE);
-    EnableWindow(GetDlgItem(hwTB, IDC_FILL), FALSE);
+    EnableWindow(GetDlgItem(hwTB, IDC_ELLIPSE), FALSE);
 }
 
 void UpdateFrameSpriteList(void)
@@ -6296,6 +6491,8 @@ const char* ButtonDescription(HWND hOver)
         if (hOver == GetDlgItem(hwTB, IDC_MASKLIST2)) return (const char*)"Choose a mask here to list the frames using it below";
         if (hOver == GetDlgItem(hwTB, IDC_MOVESECTION)) return (const char*)"List of frames using the mask above";
         if (hOver == GetDlgItem(hwTB, IDC_SECTIONLIST)) return (const char*)"Choose a section here to jump to its first frame";
+        if (hOver == GetDlgItem(hwTB, IDC_DURATION)) return (const char*)"Give a new duration value to the selected frame(s) [5;3000]";
+        if (hOver == GetDlgItem(hwTB, IDC_SETDUR)) return (const char*)"Apply this duration to the frame(s)";
     }
     else
     {
@@ -6327,6 +6524,7 @@ const char* ButtonDescription(HWND hOver)
         if (hOver == GetDlgItem(hwTB, IDC_DRAWRECT)) return (const char*)"Rectangle tool to draw or select";
         if (hOver == GetDlgItem(hwTB, IDC_DRAWCIRC)) return (const char*)"Circle tool to draw or select";
         if (hOver == GetDlgItem(hwTB, IDC_FILL)) return (const char*)"Magic wand tool to draw or select";
+        if (hOver == GetDlgItem(hwTB, IDC_ELLIPSE)) return (const char*)"Ellipse tool to draw or select";
         if (hOver == GetDlgItem(hwTB, IDC_FILLED)) return (const char*)"Draw/select rectangles or circles are filled or not?";
         if (hOver == GetDlgItem(hwTB, IDC_COPYCOLS)) return (const char*)"Copy the color set from the displayed frame to the other selected ones";
         if (hOver == GetDlgItem(hwTB, IDC_COPYCOLS2)) return (const char*)"Copy the whole 64-colour palette from the displayed frame to the other selected ones";
@@ -6341,6 +6539,8 @@ const char* ButtonDescription(HWND hOver)
         if (hOver == GetDlgItem(hwTB, IDC_DELSPRITE2)) return (const char*)"Delete the current sprite in the sprite window from the list of sprites to be detected when this frame is found";
         if (hOver == GetDlgItem(hwTB, IDC_SPRITELIST2)) return (const char*)"List of sprites to be detected when this frame is found";
         if (hOver == GetDlgItem(hwTB, IDC_COLROT)) return (const char*)"Display a dialog to manage the color rotations";
+        if (hOver == GetDlgItem(hwTB, IDC_SCROLLFILL)) return (const char*)"Automatically colorize intermediate frames of a scrolling";
+        if (hOver == GetDlgItem(hwTB, IDC_GENAGIF)) return (const char*)"Generate an animated GIF from a continuous sequence of frames";
     }
     return "";
 }
@@ -6394,6 +6594,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
             SetWindowSubclass(GetDlgItem(hDlg, IDC_ADDSECTION), ButtonSubclassProc, 0, 0);
             SetWindowSubclass(GetDlgItem(hDlg, IDC_DELSECTION), ButtonSubclassProc, 0, 0);
             SetWindowSubclass(GetDlgItem(hDlg, IDC_MOVESECTION), ButtonSubclassProc, 0, 0);
+            SendMessage(GetDlgItem(hDlg, IDC_DURATION), EM_SETLIMITTEXT, 4, 0);
             if (Edit_Mode == 0)
             {
                 SetWindowSubclass(GetDlgItem(hDlg, IDC_COLMODE), ButtonSubclassProc, 0, 0);
@@ -6413,6 +6614,8 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 SetWindowSubclass(GetDlgItem(hDlg, IDC_MASKLIST2), ButtonSubclassProc, 0, 0);
                 SetWindowSubclass(GetDlgItem(hDlg, IDC_MOVESECTION), ButtonSubclassProc, 0, 0);
                 SetWindowSubclass(GetDlgItem(hDlg, IDC_SECTIONLIST), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_DURATION), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_SETDUR), ButtonSubclassProc, 0, 0);
                 HFONT hFont = CreateFont(12, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Arial");
                 SendMessage(GetDlgItem(hDlg, IDC_SAMEFRAME), WM_SETFONT, WPARAM(hFont), TRUE);
             }
@@ -6437,6 +6640,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 SetWindowSubclass(GetDlgItem(hDlg, IDC_DRAWRECT), ButtonSubclassProc, 0, 0);
                 SetWindowSubclass(GetDlgItem(hDlg, IDC_DRAWCIRC), ButtonSubclassProc, 0, 0);
                 SetWindowSubclass(GetDlgItem(hDlg, IDC_FILL), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_ELLIPSE), ButtonSubclassProc, 0, 0);
                 SetWindowSubclass(GetDlgItem(hDlg, IDC_FILLED), ButtonSubclassProc, 0, 0);
                 SetWindowSubclass(GetDlgItem(hDlg, IDC_COPYCOLS), ButtonSubclassProc, 0, 0);
                 SetWindowSubclass(GetDlgItem(hDlg, IDC_COPYCOLS2), ButtonSubclassProc, 0, 0);
@@ -6451,6 +6655,8 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 SetWindowSubclass(GetDlgItem(hDlg, IDC_DELSPRITE2), ButtonSubclassProc, 0, 0);
                 SetWindowSubclass(GetDlgItem(hDlg, IDC_SPRITELIST2), ButtonSubclassProc, 0, 0);
                 SetWindowSubclass(GetDlgItem(hDlg, IDC_COLROT), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_SCROLLFILL), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_GENAGIF), ButtonSubclassProc, 0, 0);
 
                 if (MycRP.DrawColMode == 1)
                 {
@@ -6799,6 +7005,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 case IDC_DRAWRECT:
                 case IDC_DRAWCIRC:
                 case IDC_FILL:
+                case IDC_ELLIPSE:
                 {
                     MycRP.Draw_Mode = (UINT8)(LOWORD(wParam) - IDC_DRAWPOINT);
                     InvalidateRect(hDlg, NULL, TRUE);
@@ -7407,6 +7614,33 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 case IDC_GENAGIF:
                 {
                     SaveAnimatedGif();
+                    return TRUE;
+                }
+                case IDC_SETDUR:
+                {
+                    char tbuf[8];
+                    GetDlgItemTextA(hwTB, IDC_DURATION, tbuf, 8);
+                    int val = atoi(tbuf);
+                    bool modif = false;
+                    if (val < 5)
+                    {
+                        modif = true;
+                        val = 5;
+                    }
+                    else if (val > 3000)
+                    {
+                        modif = true;
+                        val = 3000;
+                    }
+                    if (modif)
+                    {
+                        _itoa_s(val, tbuf, 8, 10);
+                        SetDlgItemTextA(hwTB, IDC_DURATION, tbuf);
+                        MessageBoxA(hWnd, "The value was not correct (must be between 5 and 3000), it has been changed, review it and confirm again", "Error", MB_OK);
+                        return TRUE;
+                    }
+                    for (UINT ti = 0; ti < nSelFrames; ti++) MycRP.FrameDuration[SelFrames[ti]] = (UINT32)val;
+                    UpdateFSneeded = true;
                     return TRUE;
                 }
             }
@@ -10311,6 +10545,7 @@ bool CreateToolbar(void)
         SetIcon(GetDlgItem(hwTB, IDC_DRAWRECT), IDI_DRAWRECT);
         SetIcon(GetDlgItem(hwTB, IDC_DRAWCIRC), IDI_DRAWCERC);
         SetIcon(GetDlgItem(hwTB, IDC_FILL), IDI_MAGICWAND);
+        SetIcon(GetDlgItem(hwTB, IDC_ELLIPSE), IDI_ELLIPSE);
         SetIcon(GetDlgItem(hwTB, IDC_COPYCOLS), IDI_4COLSCOPY);
         SetIcon(GetDlgItem(hwTB, IDC_COPYCOLS2), IDI_64COLSCOPY);
         SetIcon(GetDlgItem(hwTB, IDC_DYNACOLSET), IDI_COLSET);
@@ -10850,6 +11085,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     timeSelFrame = timeGetTime() + 500;
     DWORD tickCount = GetTickCount();
     build_crc32_table(); // prepare CRC32 calculations
+    LoadVars();
 
     // Boucle de messages principale :
     while (!fDone)
@@ -11111,6 +11347,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                                 drawfill(MouseFinPosx, MouseFinPosy, Draw_Extra_Surface, 1);
                                 break;
                             }
+                            case 5:
+                            {
+                                drawellipse(MouseIniPosx, MouseIniPosy, (int)abs(MouseFinPosx - MouseIniPosx), (int)abs(MouseFinPosy - MouseIniPosy), Draw_Extra_Surface, 1, MycRP.Fill_Mode, false, NULL);
+                                break;
+                            }
                         }
                         if (!Copy_Mode) SetRenderDrawColor(mselcol, mselcol, mselcol, mselcol);
                         else SetRenderDrawColor(mselcol, 0, 0, mselcol);
@@ -11146,6 +11387,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                             case 4:
                             {
                                 drawfill(MouseFinPosx, MouseFinPosy, Draw_Extra_Surface, 1);
+                                break;
+                            }
+                            case 5:
+                            {
+                                drawellipse(MouseIniPosx, MouseIniPosy, (int)abs(MouseFinPosx - MouseIniPosx), (int)abs(MouseFinPosy - MouseIniPosy), Draw_Extra_Surface, 1, MycRP.Fill_Mode, false, NULL);
                                 break;
                             }
                         }
@@ -11185,6 +11431,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                             case 4:
                             {
                                 drawfill(MouseFinPosx, MouseFinPosy, Draw_Extra_Surface, 1);
+                                break;
+                            }
+                            case 5:
+                            {
+                                drawellipse(MouseIniPosx, MouseIniPosy, (int)abs(MouseFinPosx - MouseIniPosx), (int)abs(MouseFinPosy - MouseIniPosy), Draw_Extra_Surface, 1, MycRP.Fill_Mode, false, NULL);
                                 break;
                             }
                         }
@@ -11323,6 +11574,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         }
         CheckAccelerators();
     }
+    SaveVars();
     SavePaths();
     free(RedoSave);
     free(UndoSave);
