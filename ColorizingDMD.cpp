@@ -37,7 +37,7 @@ using namespace cv;
 
 #define MAJ_VERSION 1
 #define MIN_VERSION 27
-#define PATCH_VERSION 0
+#define PATCH_VERSION 1
 
 static TCHAR szWindowClass[] = _T("ColorizingDMD");
 static TCHAR szWindowClass2[] = _T("ChildWin");
@@ -1872,11 +1872,18 @@ void ConvertCopyToGradient(int xd, int yd, int xf, int yf)
     }
 }
 
-float distance(int cx,int cy,int x, int y)
+float distance(int cx, int cy, int x, int y)
 {
     float vx = (float)cx - (float)x;
     float vy = (float)cy - (float)y;
     return (float)sqrt(vx * vx + vy * vy);
+}
+
+float distanceellipse(int cx, int cy, int x, int y, float ratio)
+{
+    float vx = (float)cx - (float)x;
+    float vy = (float)cy - (float)y;
+    return (float)sqrt(vx * vx + ratio * ratio * vy * vy);
 }
 
 void ConvertCopyToRadialGradient(int xd, int yd, int xf, int yf)
@@ -1890,6 +1897,34 @@ void ConvertCopyToRadialGradient(int xd, int yd, int xf, int yf)
             if (Copy_Mask[tj * MycRom.fWidth + ti] > 0)
             {
                 float rayon = distance(xd, yd, ti, tj);
+
+                if (rayon >= vnorm)
+                {
+                    for (unsigned int tk = 0; tk < nSelFrames; tk++) MycRom.cFrames[SelFrames[tk] * MycRom.fWidth * MycRom.fHeight + tj * MycRom.fWidth + ti] =
+                        max(Draw_Grad_Fin, Draw_Grad_Ini);
+                }
+                else
+                {
+                    for (unsigned int tk = 0; tk < nSelFrames; tk++) MycRom.cFrames[SelFrames[tk] * MycRom.fWidth * MycRom.fHeight + tj * MycRom.fWidth + ti] =
+                        min(Draw_Grad_Ini, Draw_Grad_Fin) + (int)((rayon / vnorm) * range);
+                }
+            }
+        }
+    }
+}
+
+void ConvertCopyToEllipseRadialGradient(int xd, int yd, int xf, int yf)
+{
+    float vnorm = (float)abs(xf - xd);
+    float ratio = vnorm / (float)abs(yf - yd);
+    float range = (float)(max(Draw_Grad_Fin, Draw_Grad_Ini) - min(Draw_Grad_Fin, Draw_Grad_Ini) + 1);
+    for (int tj = 0; tj < (int)MycRom.fHeight; tj++)
+    {
+        for (int ti = 0; ti < (int)MycRom.fWidth; ti++)
+        {
+            if (Copy_Mask[tj * MycRom.fWidth + ti] > 0)
+            {
+                float rayon = distanceellipse(xd, yd, ti, tj, ratio);
 
                 if (rayon >= vnorm)
                 {
@@ -6436,7 +6471,7 @@ void DisableDrawButtons(void)
     //EnableWindow(GetDlgItem(hwTB, IDC_DRAWLINE), FALSE);
     EnableWindow(GetDlgItem(hwTB, IDC_DRAWRECT), FALSE);
     //EnableWindow(GetDlgItem(hwTB, IDC_DRAWCIRC), FALSE);
-    EnableWindow(GetDlgItem(hwTB, IDC_ELLIPSE), FALSE);
+    //EnableWindow(GetDlgItem(hwTB, IDC_ELLIPSE), FALSE);
 }
 
 void UpdateFrameSpriteList(void)
@@ -9625,10 +9660,10 @@ void mouse_move_callback(GLFWwindow* window, double xpos, double ypos)
     {
         MouseFinPosx = (int)xpos / frame_zoom;
         MouseFinPosy = (int)ypos / frame_zoom;
-        if (MouseFinPosx < 0) MouseFinPosx = 0;
+        /*if (MouseFinPosx < 0) MouseFinPosx = 0;
         if (MouseFinPosx >= (int)MycRom.fWidth) MouseFinPosx = MycRom.fWidth - 1;
         if (MouseFinPosy < 0) MouseFinPosy = 0;
-        if (MouseFinPosy >= (int)MycRom.fHeight) MouseFinPosy = MycRom.fHeight - 1;
+        if (MouseFinPosy >= (int)MycRom.fHeight) MouseFinPosy = MycRom.fHeight - 1;*/
         switch (Mouse_Mode)
         {
             case 1:
@@ -9980,7 +10015,8 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                     if (MycRP.DrawColMode == 2)
                     {
                         if (MycRP.Draw_Mode==1) ConvertCopyToGradient(MouseIniPosx, MouseIniPosy, MouseFinPosx, MouseFinPosy);
-                        else ConvertCopyToRadialGradient(MouseIniPosx, MouseIniPosy, MouseFinPosx, MouseFinPosy);
+                        else if (MycRP.Draw_Mode == 3) ConvertCopyToRadialGradient(MouseIniPosx, MouseIniPosy, MouseFinPosx, MouseFinPosy);
+                        else if (MycRP.Draw_Mode == 5) ConvertCopyToEllipseRadialGradient(MouseIniPosx, MouseIniPosy, MouseFinPosx, MouseFinPosy);
                     }
                     else ConvertSurfaceToFrame(Draw_Extra_Surface, isDel_Mode);
                     UpdateFSneeded = true;
