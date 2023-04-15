@@ -116,6 +116,14 @@ typedef struct
 	UINT32*		TriggerID; // UINT32[nF] does this frame triggers any event ID, 0xFFFFFFFF if not
 }cRom_struct;
 
+/*typedef struct
+{
+	char path[MAX_PATH]; // path of the image
+	UINT SelWidth, SelHeight; // selection width in pixels
+	float ratio; // selection ratio W/H
+	UINT x, y; // selection position
+}sImage;*/
+
 typedef struct
 {
 	// Header
@@ -127,7 +135,7 @@ typedef struct
 	UINT8		preColSet; // first 4-or-16-color set displayed in the dialogbox
 	char		nameColSet[MAX_COL_SETS * 64]; // caption of the colsets
 	UINT32		DrawColMode; // 0- 1 col mode, 1- 4 color set mode, 2- gradient mode
-	UINT8		Draw_Mode;	// in colorization mode: 0- point, 1- line, 2- rect, 3- circle, 4- fill
+	UINT8		Draw_Mode;	// in colorization mode: 0- point, 1- line, 2- rect, 3- circle, 4- fill, 5- ellipse
 	int			Mask_Sel_Mode; // in comparison mode: 0- point, 1- rectangle, 2- magic wand
 	BOOL		Fill_Mode; // FALSE- empty, TRUE- filled
 	char		Mask_Names[MAX_MASKS * SIZE_MASK_NAME]; // the names of the synamic masks
@@ -138,7 +146,7 @@ typedef struct
 	UINT32		Sprite_Col_From_Frame[255]; // Which frame is used for the palette of the sprite colors
 	UINT8		Sprite_Edit_Colors[16 * 255]; // Which color are used to edit this sprite
 	UINT32*		FrameDuration; // UINT32[nF] duration of the frame
-	char		SaveDir[260]; // char[260] save directory
+	//char		SaveDir[260]; // char[260] save directory
 	UINT16		SpriteRect[255*4]; // UINT16[255*4] rectangle where to find the sprite in the frame Sprite_Col_From_Frame
 	BOOL		SpriteRectMirror[255 * 2]; // BOOL[255*2] has the initial rectangle been mirrored horizontally or/and vertically
 }cRP_struct;
@@ -157,3 +165,4 @@ typedef struct {
 	UINT8 acfirst[MAX_COLOR_ROTATION]; // current offset of the colors
 	DWORD timespan[MAX_COLOR_ROTATION]; // time span between 2 switches
 } sColRot;
+

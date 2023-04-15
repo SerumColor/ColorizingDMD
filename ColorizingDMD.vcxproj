@@ -150,6 +150,7 @@
     <ClInclude Include="ColorizingDMD.h" />
     <ClInclude Include="cRom.h" />
     <ClInclude Include="framework.h" />
+    <ClInclude Include="gifenc.h" />
     <ClInclude Include="OGL_Immediate_2D.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="stb_image_write.h" />
@@ -157,6 +158,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ColorizingDMD.cpp" />
+    <ClCompile Include="gifenc.c" />
     <ClCompile Include="OGL_Immediate_2D.cpp" />
   </ItemGroup>
   <ItemGroup>

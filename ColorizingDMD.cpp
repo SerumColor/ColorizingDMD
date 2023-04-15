@@ -29,14 +29,14 @@ using namespace Gdiplus;
 #include "LiteZip.h"
 #include <opencv2/opencv.hpp>
 using namespace cv;
-#include <gif_lib.h>
+#include "gifenc.h"
 
 #pragma endregion Includes
 
 #pragma region Global_Variables
 
 #define MAJ_VERSION 1
-#define MIN_VERSION 27
+#define MIN_VERSION 29
 #define PATCH_VERSION 1
 
 static TCHAR szWindowClass[] = _T("ColorizingDMD");
@@ -3310,147 +3310,103 @@ void DrawImagePix(UINT8* pimage, UINT pixnb, UINT8 pcol, UINT sizepix)
 
 }
 
-bool CreateGIF(char* GIFname, unsigned char* pimages, unsigned char* ppalettes, unsigned int* pdurations, int nimages, int width, int height)
+bool CreateGIF(char* GIFname, unsigned char* pimages, unsigned char* ppalettes, unsigned int* pdurations, UINT8* pcrotations, int nimages, int width, int height)
 {
-    int error;
-    GifFileType* gif = EGifOpenFileName(GIFname, true, &error);
-    if (gif == NULL) {
-        cprintf("Error opening file %s\n", GIFname);
-        return false;
-    }
-
-    // Set the GIF version to 89a
-    EGifSetGifVersion(gif, true);
-
-    // Write the screen descriptor
-    ColorMapObject* global_cmap = NULL;
-    if (EGifPutScreenDesc(gif, width, height, 8, 0, global_cmap) == GIF_ERROR)
+    ge_GIF* gif = ge_new_gif(GIFname, width, height, 6, 0, 0);
+    for (int ti = 0; ti < nimages; ti++)
     {
-        cprintf("Error writing screen descriptor\n");
-        EGifCloseFile(gif, &error);
-        return false;
-    }
-    // Add Netscape Application Extension block for infinite loop in version 89a
-    unsigned char ext[] = { 0x21, 0xFF, 0x0B, 'N', 'E', 'T', 'S', 'C', 'A', 'P', 'E', '2', '.', '0', 0x03, 0x01, 0x00, 0x00, 0x00 };
-    if (EGifPutExtension(gif, 0xff, sizeof(ext), (const void*)ext) == GIF_ERROR) {
-        cprintf("Error setting loop count\n");
-        EGifCloseFile(gif, &error);
-        return false;
-    }
-
-    // Write each frame
-    for (int i = 0; i < nimages; i++) {
-        // Create a local color map for the frame
-        ColorMapObject* local_cmap = GifMakeMapObject(64, (const GifColorType*)&ppalettes[i * 64 * 3]);
-        if (local_cmap == NULL) {
-            cprintf("Error creating local color map for frame %d\n", i);
-            EGifCloseFile(gif, &error);
-            return false;
-        }
-
-        // Write the image descriptor
-        if (EGifPutImageDesc(gif, 0, 0, width, height, false, local_cmap) == GIF_ERROR) {
-            cprintf("Error writing image descriptor for frame %d\n", i);
-            GifFreeMapObject(local_cmap);
-            EGifCloseFile(gif, &error);
-            return false;
-        }
-
-        // Write the image data
-        if (EGifPutLine(gif, &pimages[i * width * height], width * height) == GIF_ERROR) {
-            cprintf("Error writing image data for frame %d\n", i);
-            GifFreeMapObject(local_cmap);
-            EGifCloseFile(gif, &error);
-            return false;
-        }
-
-        // Set the frame duration
-        int duration = pdurations[i] / 10; // Convert duration from ms to 1/100th sec
-        if (duration > 0)
+        int nrot = 0;
+        UINT8 lesrot[MAX_COLOR_ROTATION * 3]; // 
+        UINT32 nextrot[MAX_COLOR_ROTATION]; // next rotation for the color rotation in ms
+        UINT32 acshift[MAX_COLOR_ROTATION];
+        for (int tj = 0; tj < MAX_COLOR_ROTATION; tj++)
         {
-            unsigned char ext[] = { 0x04, (unsigned char)(duration & 0xFF), (unsigned char)(duration >> 8), 0x00 };
-            if (EGifPutExtension(gif, GRAPHICS_EXT_FUNC_CODE, sizeof(ext), (const void*)ext) == GIF_ERROR)
+            if (pcrotations[ti * 3 * MAX_COLOR_ROTATION + tj * 3] != 255)
             {
-                cprintf("Error setting frame duration for frame %d\n", i);
-                EGifCloseFile(gif, &error);
-                return false;
+                lesrot[nrot * 3] = pcrotations[ti * 3 * MAX_COLOR_ROTATION + tj * 3];
+                lesrot[nrot * 3 + 1] = pcrotations[ti * 3 * MAX_COLOR_ROTATION + tj * 3 + 1];
+                lesrot[nrot * 3 + 2] = pcrotations[ti * 3 * MAX_COLOR_ROTATION + tj * 3 + 2];
+                nrot++;
             }
         }
-        GifFreeMapObject(local_cmap);
+        if (nrot == 0)
+        {
+            memcpy_s(gif->frame, width * height, &pimages[ti * width * height], width * height);
+            ge_add_frame(gif, &ppalettes[ti * 64 * 3], pdurations[ti] / 10);
+        }
+        else
+        {
+            memset(acshift, 0, sizeof(UINT32) * nrot);
+            for (int tj = 0; tj < nrot; tj++) nextrot[tj] = lesrot[tj * 3 + 2] * 10;
+            UINT32 nextrota = 4000;
+            for (int tk = 0; tk < nrot; tk++)
+            {
+                if (nextrot[tk] < nextrota) nextrota = nextrot[tk];
+            }
+            memcpy_s(gif->frame, width * height, &pimages[ti * width * height], width * height);
+            UINT16 lastdis;
+            bool oneshot = false;
+            if (pdurations[ti] < nextrota)
+            {
+                oneshot = true;
+                lastdis = pdurations[ti];
+            }
+            else lastdis = nextrota;
+            ge_add_frame(gif, &ppalettes[ti * 64 * 3], lastdis / 10);
+            if (oneshot) break;
+            for (int tk = 0; tk < nrot; tk++)
+            {
+                if (nextrot[tk] == nextrota)
+                {
+                    nextrot[tk] += lesrot[tk * 3 + 2] * 10;
+                    acshift[tk]++;
+                    if (acshift[tk] == lesrot[tk * 3 + 1]) acshift[tk] = 0;
+                }
+            }
+            while (1==1)
+            {
+                //firstrot = 0;
+                UINT32 nextrota = 4000;
+                for (int tk = 0; tk < nrot; tk++)
+                {
+                    if (nextrot[tk] < nextrota) nextrota = nextrot[tk];
+                }
+                // calculate the image with the rotation
+                for (int tk = 0; tk < width * height; tk++)
+                {
+                    gif->frame[tk] = 255;
+                    for (int tl = 0; tl < nrot; tl++)
+                    {
+                        if ((pimages[ti * width * height + tk] >= lesrot[tl * 3]) && (pimages[ti * width * height + tk] < lesrot[tl * 3] + lesrot[tl * 3 + 1]))
+                        {
+                            gif->frame[tk] = pimages[ti * width * height + tk] + acshift[tl];
+                            if (gif->frame[tk] >= lesrot[tl * 3] + lesrot[tl * 3 + 1]) gif->frame[tk] -= lesrot[tl * 3 + 1];
+                        }
+                    }
+                    if (gif->frame[tk] == 255) gif->frame[tk] = pimages[ti * width * height + tk];
+                }
+                if (nextrota >= pdurations[ti])
+                {
+                    ge_add_frame(gif, &ppalettes[ti * 64 * 3], max((int)(pdurations[ti] - lastdis) / 10, 1));
+                    break;
+                }
+                ge_add_frame(gif, &ppalettes[ti * 64 * 3], max((int)(nextrota - lastdis) / 10, 1));
+                lastdis = nextrota;
+                for (int tk = 0; tk < nrot; tk++)
+                {
+                    if (nextrota == nextrot[tk])
+                    {
+                        nextrot[tk] += lesrot[tk * 3 + 2] * 10;
+                        acshift[tk]++;
+                        if (acshift[tk] == lesrot[tk * 3 + 1]) acshift[tk] = 0;
+                    }
+                }
+            }
+        }
     }
-    EGifCloseFile(gif, &error);
+    ge_close_gif(gif);
     return true;
 }
-    
-    /*bool CreateGIF(char* GIFname, unsigned char* pimages, unsigned char* ppalettes, unsigned int* pdurations, int nimages, int width, int height)
-{
-    int error;
-    GifFileType* gif = EGifOpenFileName(GIFname, false, &error);
-    if (gif == NULL) {
-        cprintf("Error opening file %s\n", GIFname);
-        return false;
-    }
-
-    // Write the screen descriptor
-    ColorMapObject* global_cmap = NULL;
-    if (EGifPutScreenDesc(gif, width, height, 8, 0, global_cmap) == GIF_ERROR)
-    {
-        cprintf("Error writing screen descriptor\n");
-        EGifCloseFile(gif, &error);
-        return false;
-    }
-
-    // Write each frame
-    for (int i = 0; i < nimages; i++) {
-        // Create a local color map for the frame
-        ColorMapObject* local_cmap = GifMakeMapObject(64, (const GifColorType*)&ppalettes[i * 64 * 3]);
-        if (local_cmap == NULL) {
-            cprintf("Error creating local color map for frame %d\n", i);
-            EGifCloseFile(gif, &error);
-            return false;
-        }
-
-        // Write the image descriptor
-        if (EGifPutImageDesc(gif, 0, 0, width, height, false, local_cmap) == GIF_ERROR) {
-            cprintf("Error writing image descriptor for frame %d\n", i);
-            GifFreeMapObject(local_cmap);
-            EGifCloseFile(gif, &error);
-            return false;
-        }
-
-        // Write the image data
-        if (EGifPutLine(gif, &pimages[i * width * height], width * height) == GIF_ERROR) {
-            cprintf("Error writing image data for frame %d\n", i);
-            GifFreeMapObject(local_cmap);
-            EGifCloseFile(gif, &error);
-            return false;
-        }
-
-        // Set the frame duration
-        int duration = pdurations[i] / 10; // Convert duration from ms to 1/100th sec
-        if (duration > 0)
-        {
-            unsigned char ext[] = { 0x04, (unsigned char)(duration & 0xFF), (unsigned char)(duration >> 8), 0x00 };
-            if (EGifPutExtension(gif, GRAPHICS_EXT_FUNC_CODE, sizeof(ext), (const void*)ext) == GIF_ERROR)
-            {
-                cprintf("Error setting frame duration for frame %d\n", i);
-                EGifCloseFile(gif, &error);
-                return false;
-            }
-        }
-        GifFreeMapObject(local_cmap);
-    }
-    // Add Netscape Application Extension block for infinite loop
-    unsigned char ext[] = { 0x21, 0xFF, 0x0B, 'A', 'P', 'P', 'L', 'I', 'C', 'A', 'T', 'I', 'O', 'N', 0x03, 0x01, 0x00, 0x00, 0x00 };
-    if (EGifPutExtension(gif, 0x21, sizeof(ext), (const void*)ext) == GIF_ERROR) {
-        cprintf("Error setting loop count\n");
-        EGifCloseFile(gif, &error);
-        return false;
-    }
-
-    EGifCloseFile(gif, &error);
-    return true;
-}*/
 
 void SaveAnimatedGif(void)
 {
@@ -3531,7 +3487,7 @@ void SaveAnimatedGif(void)
     size_t sln = strlen(ofn.lpstrFile);
     if (((ofn.lpstrFile[sln - 1] != 'f') && (ofn.lpstrFile[sln - 1] != 'F')) || ((ofn.lpstrFile[sln - 2] != 'i') && (ofn.lpstrFile[sln - 2] != 'I')) || ((ofn.lpstrFile[sln - 3] != 'g') && (ofn.lpstrFile[sln - 3] != 'G')) || (ofn.lpstrFile[sln - 4] != '.'))
         strcat_s(ofn.lpstrFile, MAX_PATH, ".gif");
-    CreateGIF(ofn.lpstrFile, pimages, &MycRom.cPal[firstfr * MycRom.ncColors * 3], pdurations, nimages, MycRom.fWidth * MUL_SIZE_GIF, MycRom.fHeight * MUL_SIZE_GIF);
+    CreateGIF(ofn.lpstrFile, pimages, &MycRom.cPal[firstfr * MycRom.ncColors * 3], pdurations, &MycRom.ColorRotations[firstfr * 3 * MAX_COLOR_ROTATION], nimages, MycRom.fWidth * MUL_SIZE_GIF, MycRom.fHeight * MUL_SIZE_GIF);
     free(pimages);
     free(pdurations);
 }

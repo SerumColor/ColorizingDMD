@@ -36,12 +36,18 @@
     <ClInclude Include="stb_image_write.h">
       <Filter>Fichiers d%27en-tête</Filter>
     </ClInclude>
+    <ClInclude Include="gifenc.h">
+      <Filter>Fichiers d%27en-tête</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ColorizingDMD.cpp">
       <Filter>Fichiers sources</Filter>
     </ClCompile>
     <ClCompile Include="OGL_Immediate_2D.cpp">
+      <Filter>Fichiers sources</Filter>
+    </ClCompile>
+    <ClCompile Include="gifenc.c">
       <Filter>Fichiers sources</Filter>
     </ClCompile>
   </ItemGroup>
