@@ -13,9 +13,8 @@ To install the editor, just download the zip from the "ColorizingDMD editor" dir
 If you are using Windows 10 or more recent, right click on the file and choose "Properties". If in the Properties window, there is a box "Unblock" in the bottom right, check it and click "OK".
 Then uncompress the ZIP file.
 
-Begin with the [ColorizingDMD Wiki](https://github.com/zesinger/ColorizingDMD/wiki) for instructions on how to use the program.
-
-Additionally there is a comprehensive tutorial here https://www.pincabpassion.net/t15414-comprehensive-tuto-about-colorizingdmd
+There is a comprehensive tutorial here https://www.pincabpassion.net/t15414-comprehensive-tuto-about-colorizingdmd
+You should also check the videos made by Dtatane here https://www.youtube.com/watch?v=PJWOm6L_Lhc&list=PL_BgMMKhwOKJ9EieULq_tjClotEdiR6MO
 
 # DLL/EXE to use Serum ingame
 
