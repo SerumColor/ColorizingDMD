@@ -14,6 +14,7 @@ If you are using Windows 10 or more recent, right click on the file and choose "
 Then uncompress the ZIP file.
 
 There is a comprehensive tutorial here https://www.pincabpassion.net/t15414-comprehensive-tuto-about-colorizingdmd
+
 You should also check the videos made by Dtatane here https://www.youtube.com/watch?v=PJWOm6L_Lhc&list=PL_BgMMKhwOKJ9EieULq_tjClotEdiR6MO
 
 # DLL/EXE to use Serum ingame
