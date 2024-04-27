@@ -126,8 +126,12 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependenies);gdiplus.lib;Comctl32.lib;Shlwapi.lib;Winmm.lib;opengl32.lib;glfw3.lib;glew32.lib;LiteZip.lib;opencv_aruco451d.lib;opencv_bgsegm451d.lib;opencv_bioinspired451d.lib;opencv_calib3d451d.lib;opencv_ccalib451d.lib;opencv_core451d.lib;opencv_datasets451d.lib;opencv_dnn451d.lib;opencv_dnn_objdetect451d.lib;opencv_dnn_superres451d.lib;opencv_dpm451d.lib;opencv_face451d.lib;opencv_features2d451d.lib;opencv_flann451d.lib;opencv_fuzzy451d.lib;opencv_gapi451d.lib;opencv_hdf451d.lib;opencv_hfs451d.lib;opencv_highgui451d.lib;opencv_imgcodecs451d.lib;opencv_imgproc451d.lib;opencv_img_hash451d.lib;opencv_intensity_transform451d.lib;opencv_line_descriptor451d.lib;opencv_mcc451d.lib;opencv_ml451d.lib;opencv_objdetect451d.lib;opencv_optflow451d.lib;opencv_phase_unwrapping451d.lib;opencv_photo451d.lib;opencv_plot451d.lib;opencv_quality451d.lib;opencv_rapid451d.lib;opencv_reg451d.lib;opencv_rgbd451d.lib;opencv_shape451d.lib;opencv_stereo451d.lib;opencv_stitching451d.lib;opencv_structured_light451d.lib;opencv_superres451d.lib;opencv_surface_matching451d.lib;opencv_text451d.lib;opencv_tracking451d.lib;opencv_video451d.lib;opencv_videoio451d.lib;opencv_videostab451d.lib;opencv_xfeatures2d451d.lib;opencv_ximgproc451d.lib;opencv_xobjdetect451d.lib;opencv_xphoto451d.lib;giflib5.lib;</AdditionalDependencies>
+      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependenies);gdiplus.lib;Comctl32.lib;Shlwapi.lib;Winmm.lib;opengl32.lib;glfw3.lib;glew32.lib;LiteZip.lib;opencv_aruco451d.lib;opencv_bgsegm451d.lib;opencv_bioinspired451d.lib;opencv_calib3d451d.lib;opencv_ccalib451d.lib;opencv_core451d.lib;opencv_datasets451d.lib;opencv_dnn451d.lib;opencv_dnn_objdetect451d.lib;opencv_dnn_superres451d.lib;opencv_dpm451d.lib;opencv_face451d.lib;opencv_features2d451d.lib;opencv_flann451d.lib;opencv_fuzzy451d.lib;opencv_gapi451d.lib;opencv_hdf451d.lib;opencv_hfs451d.lib;opencv_highgui451d.lib;opencv_imgcodecs451d.lib;opencv_imgproc451d.lib;opencv_img_hash451d.lib;opencv_intensity_transform451d.lib;opencv_line_descriptor451d.lib;opencv_mcc451d.lib;opencv_ml451d.lib;opencv_objdetect451d.lib;opencv_optflow451d.lib;opencv_phase_unwrapping451d.lib;opencv_photo451d.lib;opencv_plot451d.lib;opencv_quality451d.lib;opencv_rapid451d.lib;opencv_reg451d.lib;opencv_rgbd451d.lib;opencv_shape451d.lib;opencv_stereo451d.lib;opencv_stitching451d.lib;opencv_structured_light451d.lib;opencv_superres451d.lib;opencv_surface_matching451d.lib;opencv_text451d.lib;opencv_tracking451d.lib;opencv_video451d.lib;opencv_videoio451d.lib;opencv_videostab451d.lib;opencv_xfeatures2d451d.lib;opencv_ximgproc451d.lib;opencv_xobjdetect451d.lib;opencv_xphoto451d.lib</AdditionalDependencies>
+      <StackReserveSize>3000000</StackReserveSize>
     </Link>
+    <PostBuildEvent>
+      <Command>xcopy /y "$(ProjectDir)textures\*.*" "$(OutDir)textures\"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -137,29 +141,40 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <WholeProgramOptimization>false</WholeProgramOptimization>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependenies);gdiplus.lib;Comctl32.lib;Shlwapi.lib;Winmm.lib;opengl32.lib;glfw3.lib;glew32.lib;LiteZip.lib;opencv_bgsegm451.lib;opencv_bioinspired451.lib;opencv_calib3d451.lib;opencv_ccalib451.lib;opencv_core451.lib;opencv_datasets451.lib;opencv_dnn451.lib;opencv_dnn_objdetect451.lib;opencv_dnn_superres451.lib;opencv_dpm451.lib;opencv_face451.lib;opencv_features2d451.lib;opencv_flann451.lib;opencv_fuzzy451.lib;opencv_gapi451.lib;opencv_hdf451.lib;opencv_hfs451.lib;opencv_highgui451.lib;opencv_imgcodecs451.lib;opencv_imgproc451.lib;opencv_img_hash451.lib;opencv_intensity_transform451.lib;opencv_line_descriptor451.lib;opencv_mcc451.lib;opencv_ml451.lib;opencv_objdetect451.lib;opencv_optflow451.lib;opencv_phase_unwrapping451.lib;opencv_photo451.lib;opencv_plot451.lib;opencv_quality451.lib;opencv_rapid451.lib;opencv_reg451.lib;opencv_rgbd451.lib;opencv_shape451.lib;opencv_stereo451.lib;opencv_stitching451.lib;opencv_structured_light451.lib;opencv_superres451.lib;opencv_surface_matching451.lib;opencv_text451.lib;opencv_tracking451.lib;opencv_video451.lib;opencv_videoio451.lib;opencv_videostab451.lib;opencv_xfeatures2d451.lib;opencv_ximgproc451.lib;opencv_xobjdetect451.lib;opencv_xphoto451.lib;giflib5.lib;</AdditionalDependencies>
+      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependenies);gdiplus.lib;Comctl32.lib;Shlwapi.lib;Winmm.lib;opengl32.lib;glfw3.lib;glew32.lib;LiteZip.lib;opencv_bgsegm451.lib;opencv_bioinspired451.lib;opencv_calib3d451.lib;opencv_ccalib451.lib;opencv_core451.lib;opencv_datasets451.lib;opencv_dnn451.lib;opencv_dnn_objdetect451.lib;opencv_dnn_superres451.lib;opencv_dpm451.lib;opencv_face451.lib;opencv_features2d451.lib;opencv_flann451.lib;opencv_fuzzy451.lib;opencv_gapi451.lib;opencv_hdf451.lib;opencv_hfs451.lib;opencv_highgui451.lib;opencv_imgcodecs451.lib;opencv_imgproc451.lib;opencv_img_hash451.lib;opencv_intensity_transform451.lib;opencv_line_descriptor451.lib;opencv_mcc451.lib;opencv_ml451.lib;opencv_objdetect451.lib;opencv_optflow451.lib;opencv_phase_unwrapping451.lib;opencv_photo451.lib;opencv_plot451.lib;opencv_quality451.lib;opencv_rapid451.lib;opencv_reg451.lib;opencv_rgbd451.lib;opencv_shape451.lib;opencv_stereo451.lib;opencv_stitching451.lib;opencv_structured_light451.lib;opencv_superres451.lib;opencv_surface_matching451.lib;opencv_text451.lib;opencv_tracking451.lib;opencv_video451.lib;opencv_videoio451.lib;opencv_videostab451.lib;opencv_xfeatures2d451.lib;opencv_ximgproc451.lib;opencv_xobjdetect451.lib;opencv_xphoto451.lib</AdditionalDependencies>
+      <StackReserveSize>3000000</StackReserveSize>
     </Link>
+    <PostBuildEvent>
+      <Command>xcopy /y "$(ProjectDir)textures\*.png" "$(OutDir)textures\"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="ColorizingDMD.h" />
+    <ClInclude Include="crc32.h" />
     <ClInclude Include="cRom.h" />
+    <ClInclude Include="dmddevice.h" />
     <ClInclude Include="framework.h" />
-    <ClInclude Include="gifenc.h" />
+    <ClInclude Include="Gif.h" />
     <ClInclude Include="OGL_Immediate_2D.h" />
     <ClInclude Include="Resource.h" />
+    <ClInclude Include="serum.h" />
+    <ClInclude Include="serumdll.h" />
     <ClInclude Include="stb_image_write.h" />
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ColorizingDMD.cpp" />
-    <ClCompile Include="gifenc.c" />
+    <ClCompile Include="crc32.cpp" />
+    <ClCompile Include="dmddevice.cpp" />
     <ClCompile Include="OGL_Immediate_2D.cpp" />
+    <ClCompile Include="serumdll.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="ColorizingDMD.rc" />
@@ -176,6 +191,8 @@
     <Image Include="icons\addspr.ico" />
     <Image Include="icons\addsprfr.ico" />
     <Image Include="icons\addtab.ico" />
+    <Image Include="icons\BBSpotOff.ico" />
+    <Image Include="icons\BBSpotOn.ico" />
     <Image Include="icons\cercle.ico" />
     <Image Include="icons\clipimage.ico" />
     <Image Include="icons\colorizedmode.ico" />
@@ -183,11 +200,16 @@
     <Image Include="icons\ColSet.ico" />
     <Image Include="icons\ColsToSel.ico" />
     <Image Include="icons\coltodyna.ico" />
+    <Image Include="icons\CommonOff.ico" />
+    <Image Include="icons\CommonOn.ico" />
     <Image Include="icons\copy.ico" />
     <Image Include="icons\crayon.ico" />
     <Image Include="icons\delallsamefr.ico" />
+    <Image Include="icons\delBG.ico" />
+    <Image Include="icons\delBG.png" />
     <Image Include="icons\deldetspr.ico" />
     <Image Include="icons\delframe.ico" />
+    <Image Include="icons\delframems.ico" />
     <Image Include="icons\delimage.ico" />
     <Image Include="icons\delsamefr.ico" />
     <Image Include="icons\delselsamefr.ico" />
@@ -196,9 +218,11 @@
     <Image Include="icons\downscale.ico" />
     <Image Include="icons\ellipse.ico" />
     <Image Include="icons\ellipse.png" />
+    <Image Include="icons\export.ico" />
     <Image Include="icons\fill.ico" />
     <Image Include="icons\finddword.ico" />
     <Image Include="icons\icon8.ico" />
+    <Image Include="icons\import.ico" />
     <Image Include="icons\invertsel.ico" />
     <Image Include="icons\loadimage.ico" />
     <Image Include="icons\mask+.ico" />
@@ -212,6 +236,7 @@
     <Image Include="icons\point.ico" />
     <Image Include="icons\rectangle.ico" />
     <Image Include="icons\redo.ico" />
+    <Image Include="icons\reimport.ico" />
     <Image Include="icons\s2.ico" />
     <Image Include="icons\saveproj.ico" />
     <Image Include="icons\search.ico" />
@@ -219,6 +244,8 @@
     <Image Include="icons\selmask.ico" />
     <Image Include="icons\selmovmask.ico" />
     <Image Include="icons\selsamefr.ico" />
+    <Image Include="icons\setBG.ico" />
+    <Image Include="icons\setBG.png" />
     <Image Include="icons\SpotOff.ico" />
     <Image Include="icons\SpotOn.ico" />
     <Image Include="icons\sprtoframe.ico" />
@@ -226,11 +253,12 @@
     <Image Include="icons\trialpha.ico" />
     <Image Include="icons\undo.ico" />
     <Image Include="icons\upscale.ico" />
+    <Image Include="icons\zoom2x.ico" />
+    <Image Include="icons\zoom2xon.ico" />
     <Image Include="icons\zoomin.ico" />
     <Image Include="icons\zoomout.ico" />
   </ItemGroup>
   <ItemGroup>
-    <Text Include="formats.txt" />
     <Text Include="manual.txt" />
   </ItemGroup>
   <ItemGroup>
@@ -242,6 +270,7 @@
     <None Include="NODROP.cur" />
     <None Include="paste.cur" />
     <None Include="POINTER.cur" />
+    <None Include="serum64.dll" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

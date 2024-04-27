@@ -36,7 +36,19 @@
     <ClInclude Include="stb_image_write.h">
       <Filter>Fichiers d%27en-tête</Filter>
     </ClInclude>
-    <ClInclude Include="gifenc.h">
+    <ClInclude Include="dmddevice.h">
+      <Filter>Fichiers d%27en-tête</Filter>
+    </ClInclude>
+    <ClInclude Include="crc32.h">
+      <Filter>Fichiers d%27en-tête</Filter>
+    </ClInclude>
+    <ClInclude Include="Gif.h">
+      <Filter>Fichiers d%27en-tête</Filter>
+    </ClInclude>
+    <ClInclude Include="serumdll.h">
+      <Filter>Fichiers d%27en-tête</Filter>
+    </ClInclude>
+    <ClInclude Include="serum.h">
       <Filter>Fichiers d%27en-tête</Filter>
     </ClInclude>
   </ItemGroup>
@@ -47,7 +59,13 @@
     <ClCompile Include="OGL_Immediate_2D.cpp">
       <Filter>Fichiers sources</Filter>
     </ClCompile>
-    <ClCompile Include="gifenc.c">
+    <ClCompile Include="dmddevice.cpp">
+      <Filter>Fichiers sources</Filter>
+    </ClCompile>
+    <ClCompile Include="crc32.cpp">
+      <Filter>Fichiers sources</Filter>
+    </ClCompile>
+    <ClCompile Include="serumdll.cpp">
       <Filter>Fichiers sources</Filter>
     </ClCompile>
   </ItemGroup>
@@ -246,9 +264,50 @@
     <Image Include="icons\ellipse.ico">
       <Filter>Fichiers de ressources</Filter>
     </Image>
+    <Image Include="icons\BBSpotOff.ico">
+      <Filter>Fichiers de ressources</Filter>
+    </Image>
+    <Image Include="icons\BBSpotOn.ico">
+      <Filter>Fichiers de ressources</Filter>
+    </Image>
+    <Image Include="icons\export.ico">
+      <Filter>Fichiers de ressources</Filter>
+    </Image>
+    <Image Include="icons\import.ico">
+      <Filter>Fichiers de ressources</Filter>
+    </Image>
+    <Image Include="icons\delBG.png">
+      <Filter>Fichiers de ressources</Filter>
+    </Image>
+    <Image Include="icons\setBG.png">
+      <Filter>Fichiers de ressources</Filter>
+    </Image>
+    <Image Include="icons\delBG.ico">
+      <Filter>Fichiers de ressources</Filter>
+    </Image>
+    <Image Include="icons\setBG.ico">
+      <Filter>Fichiers de ressources</Filter>
+    </Image>
+    <Image Include="icons\reimport.ico">
+      <Filter>Fichiers de ressources</Filter>
+    </Image>
+    <Image Include="icons\CommonOff.ico">
+      <Filter>Fichiers de ressources</Filter>
+    </Image>
+    <Image Include="icons\CommonOn.ico">
+      <Filter>Fichiers de ressources</Filter>
+    </Image>
+    <Image Include="icons\zoom2x.ico">
+      <Filter>Fichiers de ressources</Filter>
+    </Image>
+    <Image Include="icons\zoom2xon.ico">
+      <Filter>Fichiers de ressources</Filter>
+    </Image>
+    <Image Include="icons\delframems.ico">
+      <Filter>Fichiers de ressources</Filter>
+    </Image>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="formats.txt" />
     <Text Include="manual.txt">
       <Filter>Fichiers sources</Filter>
     </Text>
@@ -278,5 +337,6 @@
     <None Include="icons\cursor2.cur">
       <Filter>Fichiers de ressources</Filter>
     </None>
+    <None Include="serum64.dll" />
   </ItemGroup>
 </Project>
