@@ -3,7 +3,7 @@
 * ColorizingDMD: Program to edit cROM colorized roms
 * Programmed in plain C with Visual Studio 2022 by Zedrummer, 2022
 * 
-* Linked to the project Visual Pinball Engine for Unity and, as such, is licensed under the GNU General Public License v3.0 https://github.com/freezy/VisualPinball.Engine/blob/master/LICENSE
+* Linked to the project Visual Pinball Engine for Unity and, as such, is licensed under the GNU General Public License v3.0 https:
 * 
 * Uses OpenGL Immediate Mode for display in 2D in window as this is by far fast enough to make it works at 100+ FPS even on a low end computer with any dedicated GPU
 * 
@@ -32,12 +32,13 @@ using namespace Gdiplus;
 #include "LiteZip.h"
 #include <opencv2/opencv.hpp>
 using namespace cv;
-//#include "gifski.h"
+
 #include "Gif.h"
 #include "dmddevice.h"
 #include "crc32.h"
 #include <wincodec.h>
 #include "serumdll.h"
+#include "ZeDMD.h"
 
 #pragma endregion Includes
 
@@ -45,7 +46,7 @@ using namespace cv;
 
 #define MAJOR_VERSION 3
 #define MINOR_VERSION 0
-#define PATCH_VERSION 4
+#define PATCH_VERSION 10
 
 static TCHAR szWindowClass[] = _T("ColorizingDMD");
 static TCHAR szWindowClass2[] = _T("ChildWin");
@@ -54,157 +55,143 @@ static TCHAR szWindowClass3[] = _T("Image");
 #define IMAGE_MASK_OPACITY 200
 #define IMAGE_ZOOM_TEXMUL 4
 
-HINSTANCE hInst;                                // current instance
-// vars with all the HWND 
+HINSTANCE hInst;                                
 HWND hWnd = NULL, hwTB = NULL, hwTB2 = NULL, hwTB3 = NULL, hwTB4 = NULL;
-HWND hPal = NULL;
-HWND hPal2 = NULL;
-HWND hPal3 = NULL;
+HWND hPal = NULL; 
+HWND hPal2 = NULL; 
+HWND hPal3 = NULL; 
 HWND hMovSec = NULL, hColSet = NULL, hSprites = NULL, hImages = NULL, hStatus = NULL, hStatus2 = NULL, hStatus3 = NULL, hBStatus = NULL;
 HWND hBG = NULL;
 HWND hConsole = NULL;
 HWND hFrame32 = NULL, hFrame64 = NULL;
 
-UINT ColSetMode = 0, preColRot = 0, acColRot = 0;
-GLFWwindow* glfwframe, * glfwframestrip, * glfwsprites, * glfwspritestrip, * glfwimages, * glfwBG, * glfwBGstrip; // GLFW windows
+UINT ColSetMode = 0, preColRot = 0, acColRot = 0; 
+GLFWwindow* glfwframe, * glfwframestrip, * glfwsprites, * glfwspritestrip, * glfwimages, * glfwBG, * glfwBGstrip;	
 bool fDone = false;
 HACCEL hAccelTable;
-// vars set to redraw toolbars
-bool Update_Toolbar = false;
-bool Update_Toolbar2 = false;
-bool Update_Toolbar4 = false;
+bool Update_Toolbar = false; 
+bool Update_Toolbar2 = false; 
+bool Update_Toolbar4 = false; 
+UINT ScrWframe = 500, ScrHframe = 200; 
+UINT ScrWsprite = 500, ScrHsprite = 200; 
+UINT ScrWBG = 500, ScrHBG = 200; 
 
-// gl window dimensions
-UINT ScrWframe = 500, ScrHframe = 200;
-UINT ScrWsprite = 500, ScrHsprite = 200;
-UINT ScrWBG = 500, ScrHBG = 200;
-
-// variables for changing color frames
-UINT8 SelFrameColor = 0;
+UINT8 SelFrameColor = 0; 
 DWORD timeSelFrame = 0;
 
-UINT Edit_Mode = 0;
-bool isLoadedProject = false; // is there a project loaded?
+UINT Edit_Mode = 0; 
+
+bool isLoadedProject = false; 
 HIMAGELIST g_hImageList = NULL, g_hImageListD = NULL;
 bool Night_Mode = false;
 
-bool NewProj;
-char Dir_Dumps[MAX_PATH], Dir_Images[MAX_PATH], Dir_Serum[MAX_PATH], Dir_GIFs[MAX_PATH], Dir_VP[MAX_PATH]; // different paths we need to keep
 
-// the 2 main structures of our project
+
+bool NewProj; 
+char Dir_Dumps[MAX_PATH], Dir_Images[MAX_PATH], Dir_Serum[MAX_PATH], Dir_GIFs[MAX_PATH], Dir_VP[MAX_PATH]; 
+
 cRom_struct MycRom = { "",0,0,0,0,0,NULL,NULL,NULL,NULL,NULL,NULL,NULL };
 cRP_struct MycRP = { "",{FALSE},{0},0,0,{0},FALSE,0,FALSE };
 
 COLORREF PrevColors[16]={0};
 UINT16 originalcolors[16];
-UINT acPalette = 0;
-// vars for colors selected
-UINT noColSel = 0;
-UINT noSprSel = 0;
-UINT noColMod = 0;
+UINT acPalette = 0; 
 
-// vars for things drawn over
-UINT8 Draw_Extra_Surface[256 * 64];
-UINT8 Draw_Extra_Surface2[MAX_SPRITE_WIDTH * MAX_SPRITE_HEIGHT];
+UINT noColSel = 0; 
+UINT noSprSel = 0; 
+UINT noColMod = 0; 
+UINT8 Draw_Extra_Surface[256 * 64]; 
+UINT8 Draw_Extra_Surface2[MAX_SPRITE_WIDTH * MAX_SPRITE_HEIGHT]; 
 
-UINT Color_Pipette = 0; // are we picking the color?
+UINT Color_Pipette = 0; 
 
-// vars for zoom
-float frame_zoom = 1;
-float BG_zoom = 1;
-int offset_BG_x = 0, offset_BG_y = 0; // offset in pixels of the top left corner of the frame in the client area
-float sprite_zoom = 1;
-int offset_frame_x = 0, offset_frame_y = 0;
-int offset_sprite_x = 0, offset_sprite_y = 0;
+float frame_zoom = 1; 
+float BG_zoom = 1; 
+int offset_BG_x = 0, offset_BG_y = 0; 
+float sprite_zoom = 1; 
 
-// vars for gl textures
-UINT TxCircleFr = (UINT)-1;
-UINT TxCircleSpr = (UINT)-1;
-UINT TxCircleBG = (UINT)-1;
-UINT TxFrameStrip[2] = { (UINT)-1, (UINT)-1 };
-UINT TxSpriteStrip[2] = { (UINT)-1, (UINT)-1 };
-UINT TxBGStrip[2] = { (UINT)-1, (UINT)-1 };
-UINT TxChiffres, TxcRom;
-UINT TxImage = (UINT)-1;
-UINT TxSelImage = (UINT)-1;
-
-// vars for image import window
-UINT8* pSelImage = NULL;
-UINT width_image, height_image;
-UINT XSelection = 0, YSelection = 0, WSelection = 0, HSelection = 0;
-UINT XiSelection = 0, YiSelection = 0, WiSelection = 0, HiSelection = 0;
-UINT NSelection = 0;
-UINT NiSelection = 0;
-float SelRatio = 1;
-bool image_zoom_srce = false, image_zoom_dest = false;
-int crop_reduction = 0, crop_reductioni = 0, crop_reductionf = 0;
-int initcropwidth = 120, initcropheight = 0;
-int crop_offsetx = 0, crop_offsety = 0;
-int crop_sizeW = 0, crop_sizeH = 0;
-int crop_iOsizeW = 0, crop_iOsizeH = 0;
-int crop_fOsizeW = 0, crop_fOsizeH = 0;
-int crop_ioffsetx = 0, crop_ioffsety = 0, crop_foffsetx = 0, crop_foffsety = 0;
+int offset_frame_x = 0, offset_frame_y = 0; 
+int offset_sprite_x = 0, offset_sprite_y = 0; 
+UINT TxCircleFr = (UINT)-1; 
+UINT TxCircleSpr = (UINT)-1; 
+UINT TxCircleBG = (UINT)-1; 
+UINT TxFrameStrip[2] = { (UINT)-1, (UINT)-1 }; 
+UINT TxSpriteStrip[2] = { (UINT)-1, (UINT)-1 }; 
+UINT TxBGStrip[2] = { (UINT)-1, (UINT)-1 }; 
+UINT TxChiffres, TxcRom; 
+UINT TxImage = (UINT)-1; 
+UINT TxSelImage = (UINT)-1; 
+UINT8* pSelImage = NULL; 
+UINT width_image, height_image; 
+UINT XSelection = 0, YSelection = 0, WSelection = 0, HSelection = 0; 
+UINT XiSelection = 0, YiSelection = 0, WiSelection = 0, HiSelection = 0; 
+UINT NSelection = 0; 
+UINT NiSelection = 0; 
+float SelRatio = 1; 
+bool image_zoom_srce = false, image_zoom_dest = false; 
+int crop_reduction = 0, crop_reductioni = 0, crop_reductionf = 0; 
+int initcropwidth = 120, initcropheight = 0; 
+int crop_offsetx = 0, crop_offsety = 0; 
+int crop_sizeW = 0, crop_sizeH = 0; 
+int crop_iOsizeW = 0, crop_iOsizeH = 0; 
+int crop_fOsizeW = 0, crop_fOsizeH = 0; 
+int crop_ioffsetx = 0, crop_ioffsety = 0, crop_foffsetx = 0, crop_foffsety = 0; 
 int crop_width = 0, crop_height = 0;
-int image_posx = 0, image_posy = 0;
-int image_sizeW = 10, image_sizeH = 10;
-bool image_mouseLpressed = false, image_mouseRpressed = false;
-bool image_source_format_video = false;
-cv::VideoCapture image_video_cap;
-long image_video_frame_rate = 60;
-UINT8 image_video_hour, image_video_minute, image_video_second, image_video_frame;
-UINT8 image_video_nhours, image_video_nminutes, image_video_nseconds, image_video_nframes;
-bool image_loaded = false;
-cv::Mat image_mat, image_org_mat;
+/*int crop_scroll_mode = 0; 
+bool crop_scroll_invert = false;
+int crop_scroll_extend = 0; 
+*/
+int image_posx = 0, image_posy = 0; 
+int image_sizeW = 10, image_sizeH = 10; 
+bool image_mouseLpressed = false, image_mouseRpressed = false; 
+bool image_source_format_video = false; 
+cv::VideoCapture image_video_cap; 
+long image_video_frame_rate = 60; 
+UINT8 image_video_hour, image_video_minute, image_video_second, image_video_frame; 
+UINT8 image_video_nhours, image_video_nminutes, image_video_nseconds, image_video_nframes; 
+bool image_loaded = false; 
+cv::Mat image_mat, image_org_mat; 
 int image_brightness = 0, image_contrast = 0, image_blur = 0;
-char image_path[MAX_PATH];
+char image_path[MAX_PATH]; 
 
-// vars for textures applied to the filmstrips
-UINT acFSText = 0;
-UINT acSSText = 0;
-UINT acBSText = 0;
+UINT acFSText = 0; 
+UINT acSSText = 0; 
+UINT acBSText = 0; 
+UINT8 Raw_Digit_Def[RAW_DIGIT_W * RAW_DIGIT_H * 11]; 
+UINT8* pFrameStrip = NULL; 
+UINT8* pSpriteStrip = NULL; 
+UINT8* pBGStrip = NULL; 
+UINT SliderWidth, PosSlider; 
+UINT SliderWidth2, PosSlider2; 
+UINT SliderWidth4, PosSlider4; 
 
-UINT8 Raw_Digit_Def[RAW_DIGIT_W * RAW_DIGIT_H * 11]; // buffer for raw numbers + 'x'
+UINT ScrW, ScrH; 
+UINT ScrW2, ScrH2; 
+UINT ScrW3, ScrH3; 
+UINT ScrW4, ScrH4; 
+int MonWidth = 1920; 
+int MonHeight = 1080; 
 
-// pointers to memory to draw filmstrips
-UINT8* pFrameStrip = NULL;
-UINT8* pSpriteStrip = NULL;
-UINT8* pBGStrip = NULL;
-UINT SliderWidth, PosSlider;
-UINT SliderWidth2, PosSlider2;
-UINT SliderWidth4, PosSlider4;
+int PreFrameInStrip = 0; 
+UINT NFrameToDraw = 0; 
+UINT FS_LMargin = 0;    
 
-// vars for client size of gl windows
-UINT ScrW, ScrH;
-UINT ScrW2, ScrH2;
-UINT ScrW3, ScrH3;
-UINT ScrW4, ScrH4;
+int PreSpriteInStrip = 0; 
+UINT NSpriteToDraw = 0; 
+UINT SS_LMargin = 0;    
 
-// vars for monitor resolution
-int MonWidth = 1920;
-int MonHeight = 1080;
+int PreBGInStrip = 0; 
+UINT NBGToDraw = 0; 
+UINT BS_LMargin = 0;    
 
-// vars for position in the film strips
-int PreFrameInStrip = 0;
-UINT NFrameToDraw = 0;
-UINT FS_LMargin = 0;
-int PreSpriteInStrip = 0;
-UINT NSpriteToDraw = 0;
-UINT SS_LMargin = 0;
-int PreBGInStrip = 0;
-UINT NBGToDraw = 0;
-UINT BS_LMargin = 0;
-
-// vars for current displayed elements
-UINT acFrame = 0, prevFrame = 0;
-UINT acSprite = 0, prevSprite=0;
-UINT16 acBG = 0;
-UINT acDetSprite = 0;
-
-// vars for selections in the filmstrips
-unsigned int nSelFrames = 1;
-unsigned int SelFrames[MAX_SEL_FRAMES] = { 0 };
-unsigned int nSelSprites = 1;
-unsigned int SelSprites[MAX_SEL_FRAMES] = { 0 };
+UINT acFrame = 0, prevFrame = 0; 
+UINT acSprite = 0, prevSprite=0; 
+UINT16 acBG = 0; 
+UINT acDetSprite = 0; 
+unsigned int nSelFrames = 1; 
+unsigned int SelFrames[MAX_SEL_FRAMES] = { 0 }; 
+unsigned int nSelSprites = 1; 
+unsigned int SelSprites[MAX_SEL_FRAMES] = { 0 }; 
 const UINT8 SelColor[3] = { 100,150,255 };
 const UINT8 acColor[3] = { 255,255,255 };
 const UINT8 SameColor[3] = { 0,180,0 };
@@ -212,153 +199,160 @@ const UINT8 UnselColor[3] = { 255,50,50 };
 const UINT8 SectionColor[3] = { 255,50,255 };
 const UINT8 Common_Color[3] = { 255,255,255 };
 
-bool MultiSelectionActionWarning = false;
-bool isDrawAllSel = false;
-bool isMaskAllSel = false;
+bool MultiSelectionActionWarning = false; 
+bool isDrawAllSel = false; 
+bool isMaskAllSel = false; 
 
-DWORD timeLPress = 0, timeRPress = 0, timeUPress = 0, timeDPress = 0; // timers for repetition
-UINT32 Mouse_Mode = 0;
-bool isDel_Mode; // are we deleting from draw?
-// vars for position of the mouse
-int MouseIniPosx, MouseIniPosy;
-int MouseFinPosx, MouseFinPosy;
-int MouseFrSliderlx;
-int MouseSpSliderlx;
-int MouseBGSliderlx;
-bool MouseFrSliderLPressed = false;
-bool MouseSpSliderLPressed = false;
-bool MouseBGSliderLPressed = false;
+DWORD timeLPress = 0, timeRPress = 0, timeUPress = 0, timeDPress = 0; 
+UINT32 Mouse_Mode = 0; 
+bool isDel_Mode; 
 
-char temporaryDir[MAX_PATH]; // temporary path to save action files
+int MouseIniPosx, MouseIniPosy; 
+int MouseFinPosx, MouseFinPosy; 
+int MouseFrSliderlx; 
+int MouseSpSliderlx; 
+int MouseBGSliderlx; 
+bool MouseFrSliderLPressed = false; 
+bool MouseSpSliderLPressed = false; 
+bool MouseBGSliderLPressed = false; 
 
-// vars for undo/redo
-#define UNDO_REDO_BUFFER_SIZE (512*1024*1024)
-UINT8* UndoSaveN;
-int UndoAvailableN = 0;
-UINT UndoActionN[MAX_UNDO];
-UINT8 UndoToDisk[MAX_UNDO];
-UINT UndoLen[MAX_UNDO];
-bool UndoUsedNumber[256];
+char temporaryDir[MAX_PATH]; 
+#define UNDO_REDO_BUFFER_SIZE (512*1024*1024) 
+UINT8* UndoSaveN; 
+int UndoAvailableN = 0; 
+UINT UndoActionN[MAX_UNDO]; 
+UINT8 UndoToDisk[MAX_UNDO]; 
+UINT UndoLen[MAX_UNDO]; 
+bool UndoUsedNumber[256]; 
 UINT acUndoPos = 0;
 UINT8* RedoSaveN;
-int RedoAvailableN = 0;
-UINT RedoActionN[MAX_UNDO];
-UINT8 RedoToDisk[MAX_UNDO];
-UINT RedoLen[MAX_UNDO];
-bool RedoUsedNumber[256];
+int RedoAvailableN = 0; 
+UINT RedoActionN[MAX_UNDO]; 
+UINT8 RedoToDisk[MAX_UNDO]; 
+UINT RedoLen[MAX_UNDO]; 
+bool RedoUsedNumber[256]; 
 UINT acRedoPos = 0;
 
-bool isAddToMask = true; // true if the selection is add to mask
+bool isAddToMask = true; 
 
-HANDLE hStdout; // for log window
+HANDLE hStdout; 
 
-bool DrawCommonPoints = true; // Do we display the common points of the selected frames (in original frame mode)?
+bool DrawCommonPoints = true; 
 
-HWND hCBList = NULL; // the combobox list to subclass for right click
+HWND hCBList = NULL; 
 
 #define MAX_SAME_FRAMES 10000
 int nSameFrames = 0;
 int SameFrames[MAX_SAME_FRAMES];
 
-// vars to know if we redraw the filmstrips
-bool UpdateFSneeded = false;
-bool UpdateSSneeded = false;
-bool UpdateBSneeded = false;
+bool UpdateFSneeded = false; 
+bool UpdateSSneeded = false; 
+bool UpdateBSneeded = false; 
 
-// sprite drawing mode 
-UINT8 Sprite_Mode = 0;
-bool SpriteFill_Mode = false;
+UINT8 Sprite_Mode = 0; 
+bool SpriteFill_Mode = false; 
 
-UINT8 acDynaSet = 0; // current dynamic color set used
+UINT8 acDynaSet = 0; 
+UINT8 mselcol; 
 
-UINT8 mselcol;
+UINT8 Copy_Content = 0; 
+UINT8 Copy_Mask[256 * 64] = { 0 }; 
+UINT8 Copy_iMask[256 * 64] = { 0 }; 
+UINT16 Copy_ColN[256 * 64]; 
 
-// Vars for copy and paste
-UINT8 Copy_Content = 0;
-UINT8 Copy_Mask[256 * 64] = { 0 };
-UINT8 Copy_iMask[256 * 64] = { 0 };
-UINT16 Copy_ColN[256 * 64];
-UINT8 Copy_Colo[256 * 64];
-UINT8 Copy_Dyna[256 * 64];
-UINT8 Paste_Content = 0;
-UINT Paste_Width, Paste_Height;
-UINT8 Paste_Mask[256 * 64];
-UINT16 Paste_ColN[256 * 64];
-UINT8 Paste_Colo[256 * 64];
-UINT8 Paste_Dyna[256 * 64];
-UINT8 Common_Mask[256 * 64];
-int Copy_From_Frame = -1;
-int Copy_From_DynaMask = -1;
-bool Copy_Mode = false;
-bool Copy_Available = false;
-int paste_offsetx, paste_offsety;
-bool Paste_Mode = false;
-int Paste_Mirror = 0;
+UINT8 Copy_Colo[256 * 64]; 
+UINT8 Copy_Dyna[256 * 64]; 
 
-HCURSOR hcColPick, hcArrow, hcPaste; // pick color cursor, standard arrow cursor, paste cursor
-GLFWcursor *glfwpastecur, *glfwdropcur, *glfwarrowcur; // glfw cursors
+UINT8 Paste_Content = 0; 
+UINT Paste_Width, Paste_Height; 
+UINT8 Paste_Mask[256 * 64]; 
+UINT16 Paste_ColN[256 * 64]; 
 
-// vars for managing colors in color panels
-bool Start_Gradient = false;
-UINT Ini_Gradient_Color, Fin_Gradient_Color, Pal_Gradient_Color = 0;
-UINT16 Gradient_Colors[64];
-UINT Gradient_Length = 0;
-bool Start_Gradient2 = false;
-UINT Draw_Grad_Ini = 0, Draw_Grad_Fin = 63, Draw_Grad_Palette = 0;
-bool Draw_Grad_Opposite = false;
-UINT16 Gradient_Colors2[64];
-UINT Gradient_Length2 = 0;
-bool Start_Col_Exchange = false;
-UINT Pre_Col_Pos = 0;
-UINT Start_Imported_Col_Exchange = 0;
-int Import_Color_Frame = 0;
-UINT Ini_Import_Color, Fin_Import_Color;
+UINT8 Paste_Colo[256 * 64]; 
+UINT8 Paste_Dyna[256 * 64]; 
+UINT8 Common_Mask[256 * 64]; 
+int Copy_From_Frame = -1; 
+int Copy_From_DynaMask = -1; 
+bool Copy_Mode = false; 
+bool Copy_Available = false; 
+int paste_offsetx, paste_offsety; 
 
-// vars for permanent pushed buttons
-bool Ident_Pushed = false;
-bool BBIdent_Pushed = false;
-bool Common_Pushed = false;
-bool Zoom_Pushed = false;
-bool Zoom_Pushed_Sprite = false;
+bool Paste_Mode = false; 
+int Paste_Mirror = 0; 
+HCURSOR hcColPick, hcArrow, hcPaste; 
+GLFWcursor *glfwpastecur, *glfwdropcur, *glfwarrowcur; 
 
-// vars for filter while importing txt frames
-bool filter_time = false, filter_allmask = false, filter_color = false;
-int filter_length = 15, filter_ncolor = 16;
+bool Start_Gradient = false; 
+UINT Ini_Gradient_Color, Fin_Gradient_Color, Pal_Gradient_Color = 0; 
+UINT16 Gradient_Colors[64]; 
+UINT Gradient_Length = 0; 
 
-int statusBarHeight;
+bool Start_Gradient2 = false; 
+UINT Draw_Grad_Ini = 0, Draw_Grad_Fin = 63, Draw_Grad_Palette = 0; 
+bool Draw_Grad_Opposite = false; 
+UINT16 Gradient_Colors2[64]; 
+UINT Gradient_Length2 = 0; 
 
-bool BlocPause = true;
+bool Start_Col_Exchange = false; 
 
-bool AllSameFramesUpdated = false;
+UINT Pre_Col_Pos = 0; 
 
-// vars for extra resolution switches
-bool ExtraResFClicked = false;
-bool ExtraResSClicked = false;
-bool ExtraResBClicked = false;
-bool nEditExtraResolutionF = false;
-bool nEditExtraResolutionS = false;
-bool nEditExtraResolutionB = false;
+UINT Start_Imported_Col_Exchange = 0; 
+int Import_Color_Frame = 0; 
+UINT Ini_Import_Color, Fin_Import_Color; 
 
-float ColPick_H, ColPick_S, ColPick_V; // current position in the color picker tool
+
+
+bool Ident_Pushed = false; 
+bool BBIdent_Pushed = false; 
+bool Common_Pushed = false; 
+bool Zoom_Pushed = false; 
+bool Zoom_Pushed_Sprite = false; 
+
+bool filter_time = false, filter_allmask = false, filter_color = false; 
+int filter_length = 15, filter_ncolor = 16; 
+
+int statusBarHeight; 
+
+bool BlocPause = true; 
+
+bool AllSameFramesUpdated = false; 
+
+bool ExtraResFClicked = false; 
+bool ExtraResSClicked = false; 
+bool ExtraResBClicked = false; 
+
+
+
+
+bool nEditExtraResolutionF = false; 
+bool nEditExtraResolutionS = false; 
+bool nEditExtraResolutionB = false; 
+
+float ColPick_H, ColPick_S, ColPick_V; 
 UINT8 ColPick_R8, ColPick_G8, ColPick_B8;
 
-// these variables are used to check if the functions Predraw_XXX must be called
-UINT prevAcFrame = (UINT)-1;
-bool prevEditExtraResolutionF = true;
-UINT16 prevAcBG = (UINT16)-1;
-bool prevEditExtraResolutionB = true;
+
+UINT prevAcFrame = (UINT)-1; 
+bool prevEditExtraResolutionF = true; 
+UINT16 prevAcBG = (UINT16)-1; 
+bool prevEditExtraResolutionB = true; 
 
 HBRUSH hActiveBrush = CreateSolidBrush(RGB(255, 0, 0)), hInactiveBrush = CreateSolidBrush(GetSysColor(COLOR_BTNFACE));
 
-// vars to choose which graphic filters to use to resize
-int FrameResizeFilter = cv::INTER_NEAREST;
-int SpriteResizeFilter = cv::INTER_NEAREST;
-int BGResizeFilter = cv::INTER_NEAREST;
-int ImgResizeFilter = cv::INTER_NEAREST;
+
+
+int FrameResizeFilter = cv::INTER_NEAREST; 
+int SpriteResizeFilter = cv::INTER_NEAREST; 
+int BGResizeFilter = cv::INTER_NEAREST; 
+int ImgResizeFilter = cv::INTER_NEAREST; 
 
 #pragma endregion Global_Variables
 
 #pragma region Undo_Tools
+
+
+
 
 void UpdateURCounts(void)
 {
@@ -379,8 +373,10 @@ void deleteFilesWithPattern(const char* pattern)
     HANDLE hFind;
     char searchPath[MAX_PATH];
 
+    
     sprintf_s(searchPath, MAX_PATH, "%s", pattern);
 
+    
     hFind = FindFirstFileA(searchPath, &findData);
     if (hFind == INVALID_HANDLE_VALUE) return;
     do
@@ -388,8 +384,12 @@ void deleteFilesWithPattern(const char* pattern)
         DeleteFileA(findData.cFileName);
     } while (FindNextFileA(hFind, &findData) != 0);
 
+    
     FindClose(hFind);
 }
+
+
+
 
 void ResetUndoService()
 {
@@ -414,12 +414,20 @@ void ResetUndoService()
     EnableWindow(GetDlgItem(hwTB4, IDC_REDO), FALSE);
 }
 
+
+
+
+
+
+
+
+
 HANDLE CreateSaveFile(bool isUndo, UINT8 noFile)
 {
     char tpFile[MAX_PATH];
     if (isUndo) sprintf_s(tpFile, MAX_PATH, "%ssaveaction%03i.undo", temporaryDir, noFile);
     else sprintf_s(tpFile, MAX_PATH, "%ssaveaction%03i.redo", temporaryDir, noFile);
-    // Attempt to delete the file
+    
     HANDLE hFile = CreateFileA(tpFile, GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (hFile == INVALID_HANDLE_VALUE)
     {
@@ -433,7 +441,7 @@ BOOL WriteSaveFile(HANDLE hFile, void* pbuffer, UINT buflen)
 {
     if (hFile == INVALID_HANDLE_VALUE) return false;
 
-    // Write to file
+    
     DWORD written = 0;
     BOOL resw = WriteFile(hFile, pbuffer, buflen, &written, NULL);
     if (!resw || written!=buflen)
@@ -474,7 +482,7 @@ HANDLE OpenSaveFile(bool isUndo, UINT8 noFile)
     char tpFile[MAX_PATH];
     if (isUndo) sprintf_s(tpFile, MAX_PATH, "%ssaveaction%03i.undo", temporaryDir, noFile);
     else sprintf_s(tpFile, MAX_PATH, "%ssaveaction%03i.redo", temporaryDir, noFile);
-    // Attempt to delete the file
+    
     HANDLE hFile = CreateFileA(tpFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (hFile == INVALID_HANDLE_VALUE)
     {
@@ -488,7 +496,7 @@ BOOL ReadSaveFile(HANDLE hFile, void* pbuffer, UINT buflen)
 {
     if (hFile == INVALID_HANDLE_VALUE) return false;
 
-    // Write to file
+    
     DWORD written = 0;
     BOOL resw = ReadFile(hFile, pbuffer, buflen, &written, NULL);
     if (!resw || written != buflen)
@@ -502,6 +510,11 @@ BOOL ReadSaveFile(HANDLE hFile, void* pbuffer, UINT buflen)
     }
     return true;
 }
+
+
+
+
+
 
 
 UINT8 GetFreeSaveFileNumber(bool isUndo)
@@ -518,6 +531,11 @@ UINT8 GetFreeSaveFileNumber(bool isUndo)
     return ti;
 }
 
+
+
+
+
+
 UINT8 GetLastDiskSaveNumber(bool isUndo)
 {
     if (isUndo)
@@ -531,6 +549,11 @@ UINT8 GetLastDiskSaveNumber(bool isUndo)
         return RedoToDisk[RedoAvailableN - 1];
     }
 }
+
+
+
+
+
 
 void DeleteSaveFile(bool isUndo, UINT8 noFile)
 {
@@ -548,6 +571,9 @@ void DeleteSaveFile(bool isUndo, UINT8 noFile)
     DeleteFileA(tpFile);
 }
 
+
+
+
 void DeleteSaveFiles()
 {
     for (int ti = 0; ti < 256; ti++)
@@ -557,9 +583,15 @@ void DeleteSaveFiles()
     }
 }
 
+
+
+
+
+
+
 void EraseFirstSavedActions(bool isUndo, UINT spaceNeeded)
 {
-    if (spaceNeeded > UNDO_REDO_BUFFER_SIZE) return;
+    if (spaceNeeded > UNDO_REDO_BUFFER_SIZE) return; 
     UINT* pAc;
     UINT8* pBuffer;
     UINT* acPos;
@@ -587,7 +619,7 @@ void EraseFirstSavedActions(bool isUndo, UINT spaceNeeded)
     UINT remmem = UNDO_REDO_BUFFER_SIZE - *acPos;
     while (remmem < spaceNeeded && (*pAvailable) > 0)
     {
-        if (toDisk[0] == 255) // not saved on disk
+        if (toDisk[0] == 255) 
             memcpy(pBuffer, &pBuffer[allLen[0]], *acPos - allLen[0]);
         else
             DeleteSaveFile(isUndo, toDisk[0]);
@@ -602,6 +634,11 @@ void EraseFirstSavedActions(bool isUndo, UINT spaceNeeded)
         (*pAvailable)--;
     }
 }
+
+
+
+
+
 void EraseFirstSavedAction(bool isUndo)
 {
     UINT* pAc;
@@ -628,7 +665,7 @@ void EraseFirstSavedAction(bool isUndo)
         acPos = &acRedoPos;
         toDisk = RedoToDisk;
     }
-    if (toDisk[0] == 255) // not saved on disk
+    if (toDisk[0] == 255) 
         memcpy(pBuffer, &pBuffer[allLen[0]], *acPos - allLen[0]);
     else
         DeleteSaveFile(isUndo, toDisk[0]);
@@ -641,9 +678,15 @@ void EraseFirstSavedAction(bool isUndo)
     }
     (*pAvailable)--;
 }
+
+
+
+
+
+
 UINT8* SaveGetBuffer(bool isUndo, UINT spaceNeeded)
 {
-    if (spaceNeeded > UNDO_REDO_BUFFER_SIZE) return NULL;
+    if (spaceNeeded > UNDO_REDO_BUFFER_SIZE) return NULL; 
     if (isUndo)
     {
         if (UndoAvailableN == MAX_UNDO) EraseFirstSavedAction(true);
@@ -659,6 +702,11 @@ UINT8* SaveGetBuffer(bool isUndo, UINT spaceNeeded)
         return &RedoSaveN[acRedoPos];
     }
 }
+
+
+
+
+
 void SaveSetAction(bool isUndo, UINT action,UINT spaceNeeded)
 {
     if (isUndo)
@@ -682,6 +730,11 @@ void SaveSetAction(bool isUndo, UINT action,UINT spaceNeeded)
 }
 
 
+
+
+
+
+
 UINT8* RecoverGetBuffer(bool isUndo)
 {
     if (isUndo)
@@ -695,6 +748,10 @@ UINT8* RecoverGetBuffer(bool isUndo)
         return &RedoSaveN[acRedoPos - RedoLen[RedoAvailableN - 1]];
     }
 }
+
+
+
+
 void RecoverAdjustAction(bool isUndo)
 {
     if (isUndo)
@@ -714,7 +771,12 @@ void RecoverAdjustAction(bool isUndo)
 
 
 
-// SA_DRAW:
+
+
+
+
+
+
 
 UINT CalcSizeDrawFrames()
 {
@@ -749,7 +811,7 @@ void RecoverDrawFrames(bool isUndo)
     RecoverAdjustAction(isUndo);
 }
 
-// SA_FULLDRAW:
+
 
 UINT CalcSizeFullDrawFrames()
 {
@@ -801,7 +863,7 @@ void RecoverFullDrawFrames(bool isUndo)
     RecoverAdjustAction(isUndo);
 }
 
-// SA_DRAWPAL:
+
 
 UINT CalcSizeDrawPalFrames()
 {
@@ -838,6 +900,7 @@ void RecoverDrawPalFrames(bool isUndo)
 }
 
 
+
 UINT CalcSizeSelection()
 {
     return (2 * sizeof(UINT) + nSelFrames * sizeof(UINT));
@@ -846,6 +909,7 @@ UINT CalcSizeSelection()
 void SaveSelection(bool isUndo)
 {
     UINT8* pBuffer;
+    
     if (isUndo && (UndoAvailableN > 1) && (UndoActionN[UndoAvailableN - 2] == SA_SELECTION) && (UndoActionN[UndoAvailableN - 1] == SA_SELECTION))
     {
         UndoAvailableN--;
@@ -878,7 +942,7 @@ void RecoverSelection(bool isUndo)
     RecoverAdjustAction(isUndo);
 }
 
-// SA_DYNACOLOR:
+
 
 UINT CalcSizeDynaColor()
 {
@@ -917,7 +981,7 @@ void RecoverDynaColor(bool isUndo)
     InvalidateRect(hwTB, NULL, TRUE);
 }
 
-// SA_DYNAALL:
+
 
 UINT CalcSizeDynaAll()
 {
@@ -964,7 +1028,7 @@ void RecoverDynaAll(bool isUndo)
     InvalidateRect(hwTB, NULL, TRUE);
 }
 
-// SA_COMPMASK:
+
 
 UINT CalcSizeCompMask()
 {
@@ -989,7 +1053,7 @@ void RecoverCompMask(bool isUndo)
     RecoverAdjustAction(isUndo);
 }
 
-// SA_DURATION:
+
 
 UINT CalcSizeDuration()
 {
@@ -1006,12 +1070,13 @@ void SaveDuration(bool isUndo)
 
 void RecoverDuration(bool isUndo)
 {
+    
     UINT* pBuffer = (UINT*)RecoverGetBuffer(isUndo);
     for (UINT ti = 0; ti < nSelFrames; ti++) MycRP.FrameDuration[SelFrames[ti]] = pBuffer[ti];
     RecoverAdjustAction(isUndo);
 }
 
-// SA_PALETTE:
+
 
 UINT CalcSizePalette()
 {
@@ -1021,7 +1086,7 @@ UINT CalcSizePalette()
 void SavePalette(bool isUndo)
 {
     UINT spaceNeeded = CalcSizePalette();
-    // Save selected frame content for undo or redo action before drawing
+    
     UINT8* pBuffer = SaveGetBuffer(isUndo, spaceNeeded);
     memcpy(pBuffer, MycRP.Palette, sizeof(UINT16) * N_PALETTES * 64);
     SaveSetAction(isUndo, SA_PALETTE, spaceNeeded);
@@ -1029,13 +1094,14 @@ void SavePalette(bool isUndo)
 
 void RecoverPalette(bool isUndo)
 {
+    
     UINT8* pBuffer = RecoverGetBuffer(isUndo);
     memcpy(MycRP.Palette, pBuffer, sizeof(UINT16) * N_PALETTES * 64);
     RecoverAdjustAction(isUndo);
 }
 
 
-// SA_MASKID:
+
 
 UINT CalcSizeMaskID()
 {
@@ -1059,7 +1125,7 @@ void RecoverMaskID(bool isUndo)
     RecoverAdjustAction(isUndo);
 }
 
-// SA_ISFRAMEX:
+
 
 UINT CalcSizeIsFrameX()
 {
@@ -1096,7 +1162,7 @@ void RecoverIsFrameX(bool isUndo)
     RecoverAdjustAction(isUndo);
 }
 
-// SA_ISSPRITEX:
+
 
 UINT CalcSizeIsSpriteX()
 {
@@ -1133,7 +1199,7 @@ void RecoverIsSpriteX(bool isUndo)
     RecoverAdjustAction(isUndo);
 }
 
-// SA_ISBGX:
+
 
 UINT CalcSizeIsBackgroundX()
 {
@@ -1170,7 +1236,7 @@ void RecoverIsBackgroundX(bool isUndo)
     RecoverAdjustAction(isUndo);
 }
 
-// SA_SHAPEMODE:
+
 
 UINT CalcSizeShapeMode()
 {
@@ -1194,7 +1260,7 @@ void RecoverShapeMode(bool isUndo)
     RecoverAdjustAction(isUndo);
 }
 
-// SA_COLSETS:
+
 
 UINT CalcSizeColorSets()
 {
@@ -1205,9 +1271,9 @@ void SaveColorSets(bool isUndo)
 {
     UINT spaceNeeded = CalcSizeColorSets();
     UINT8* pBuffer = SaveGetBuffer(isUndo, spaceNeeded);
-    memcpy(pBuffer, MycRP.ColSets, sizeof(UINT16) * MAX_COL_SETS * 16); // copy the col sets
-    memcpy(&pBuffer[sizeof(UINT16) * MAX_COL_SETS * 16], MycRP.nameColSet, MAX_COL_SETS * 64); // copy their names
-    memcpy(&pBuffer[MAX_COL_SETS * (sizeof(UINT16) * 16 + 64)], MycRP.activeColSet, MAX_COL_SETS * sizeof(BOOL)); // copy the active one
+    memcpy(pBuffer, MycRP.ColSets, sizeof(UINT16) * MAX_COL_SETS * 16); 
+    memcpy(&pBuffer[sizeof(UINT16) * MAX_COL_SETS * 16], MycRP.nameColSet, MAX_COL_SETS * 64); 
+    memcpy(&pBuffer[MAX_COL_SETS * (sizeof(UINT16) * 16 + 64)], MycRP.activeColSet, MAX_COL_SETS * sizeof(BOOL)); 
     SaveSetAction(isUndo, SA_COLSETS, spaceNeeded);
 }
 
@@ -1220,9 +1286,30 @@ void RecoverColorSets(bool isUndo)
     RecoverAdjustAction(isUndo);
 }
 
-// 
 
-// SA_COPYMASK
+
+/*void SaveEditColor(bool isUndo)
+{
+    
+    UINT8* pBuffer = SaveGetBuffer(isUndo);
+    memcpy(pBuffer, acEditColors, 16);
+    SaveSetAction(isUndo, SA_EDITCOLOR);
+}
+
+void RecoverEditColor(bool isUndo)
+{
+    
+    UINT8* pBuffer = RecoverGetBuffer(isUndo);
+    memcpy(acEditColors, pBuffer, 16);
+    if (Edit_Mode == 1)
+    {
+        for (UINT ti = IDC_COL1; ti <= IDC_COL16; ti++) InvalidateRect(GetDlgItem(hwTB, ti), NULL, TRUE);
+    }
+    RecoverAdjustAction(isUndo);
+}
+*/
+
+
 
 UINT CalcSizeCopyMask()
 {
@@ -1268,7 +1355,8 @@ void SaveCopyMask(bool isUndo)
     /**(int*)pBuffer = paste_centerx;
     pBuffer += sizeof(int);
     *(int*)pBuffer = paste_centery;
-    pBuffer += sizeof(int);*/
+    pBuffer += sizeof(int);
+    */
     *(bool*)pBuffer = Paste_Mode;
     pBuffer += sizeof(bool);
     *(int*)pBuffer = Paste_Mirror;
@@ -1314,7 +1402,8 @@ void RecoverCopyMask(bool isUndo)
     /*paste_centerx = *(int*)pBuffer;
     pBuffer += sizeof(int);
     paste_centery = *(int*)pBuffer;
-    pBuffer += sizeof(int);*/
+    pBuffer += sizeof(int);
+    */
     Paste_Mode = *(bool*)pBuffer;
     pBuffer += sizeof(bool);
     Paste_Mirror = *(int*)pBuffer;
@@ -1323,7 +1412,7 @@ void RecoverCopyMask(bool isUndo)
     RecoverAdjustAction(isUndo);
 }
 
-// SA_DYNAMASK:
+
 
 UINT CalcSizeDynaMask()
 {
@@ -1373,7 +1462,7 @@ void RecoverSpriteCol(bool isUndo)
 }
 */
 
-// SA_FRAMESPRITES:
+
 
 UINT CalcSizeFrameSprites()
 {
@@ -1407,7 +1496,7 @@ void RecoverFrameSprites(bool isUndo)
     RecoverAdjustAction(isUndo);
 }
 
-// SA_ACSPRITE:
+
 
 UINT CalcSizeAcSprite()
 {
@@ -1417,6 +1506,7 @@ UINT CalcSizeAcSprite()
 void SaveAcSprite(bool isUndo)
 {
     UINT8* pBuffer;
+    
     if (isUndo && (UndoAvailableN > 1) && (UndoActionN[UndoAvailableN - 2] == SA_ACSPRITE) && (UndoActionN[UndoAvailableN - 1] == SA_ACSPRITE))
     {
         UndoAvailableN--;
@@ -1439,6 +1529,7 @@ void RecoverAcSprite(bool isUndo)
     memcpy(SelSprites, &pBuffer[2 * sizeof(UINT)], nSelSprites * sizeof(int));
     RecoverAdjustAction(isUndo);
 }
+
 
 
 UINT CalcSizeSprite()
@@ -1491,7 +1582,7 @@ void RecoverSprite(bool isUndo)
     RecoverAdjustAction(isUndo);
 }
 
-// SA_SPRITEDETAREAS:
+
 
 UINT CalcSizeSpriteDetAreas()
 {
@@ -1523,7 +1614,7 @@ void RecoverSpriteDetAreas(bool isUndo)
     RecoverAdjustAction(isUndo);
 }
 
-// SA_SPRITEDRAW:
+
 
 UINT CalcSizeDrawSprite()
 {
@@ -1558,7 +1649,7 @@ void RecoverDrawSprite(bool isUndo)
     RecoverAdjustAction(isUndo);
 }
 
-// SA_COLROT:
+
 
 UINT CalcSizeColRot()
 {
@@ -1593,10 +1684,12 @@ void RecoverColRot(bool isUndo)
     RecoverAdjustAction(isUndo);
 }
 
-// SA_SPRITES: Save ALL the sprites, use SA_SPRITE for just 1
+
+
 
 void SaveSprites(bool isUndo)
 {
+    
     UINT noSave = GetFreeSaveFileNumber(isUndo);
     if (noSave == 255) return;
     HANDLE hSave = CreateSaveFile(isUndo, noSave);
@@ -1622,6 +1715,7 @@ void SaveSprites(bool isUndo)
 
 void RecoverSprites(bool isUndo)
 {
+    
     UINT noSave = GetLastDiskSaveNumber(isUndo);
     if (noSave == 255) return;
     HANDLE hSave = OpenSaveFile(isUndo, noSave);
@@ -1660,10 +1754,12 @@ void RecoverSprites(bool isUndo)
     RecoverAdjustAction(isUndo);
 }
 
-// SA_FRAMES: Save ALL the frames
+
+
 
 void SaveFrames(bool isUndo)
 {
+    
     UINT noSave = GetFreeSaveFileNumber(isUndo);
     if (noSave == 255) return;
     HANDLE hSave = CreateSaveFile(isUndo, noSave);
@@ -1697,6 +1793,7 @@ void SaveFrames(bool isUndo)
 
 void RecoverFrames(bool isUndo)
 {
+    
     UINT noSave = GetLastDiskSaveNumber(isUndo);
     if (noSave == 255) return;
     HANDLE hSave = OpenSaveFile(isUndo, noSave);
@@ -1753,7 +1850,7 @@ void RecoverFrames(bool isUndo)
     RecoverAdjustAction(isUndo);
 }
 
-// SA_SECTIONS:
+
 
 UINT CalcSizeSections()
 {
@@ -1780,7 +1877,7 @@ void RecoverSections(bool isUndo)
     UpdateSectionList();
 }
 
-// SA_SETBACKGROUND:
+
 
 UINT CalcSizeSetBackground()
 {
@@ -1818,7 +1915,7 @@ void RecoverSetBackground(bool isUndo)
     RecoverAdjustAction(isUndo);
 }
 
-// SA_COPYBACKGROUND:
+
 
 UINT CalcSizeCopyBackground()
 {
@@ -1858,10 +1955,12 @@ void RecoverCopyBackground(bool isUndo)
     RecoverAdjustAction(isUndo);
 }
 
-// SA_DELBACKGROUND: Save all the backgrounds
+
+
 
 void SaveDelBackground(bool isUndo)
 {
+    
     UINT noSave = GetFreeSaveFileNumber(isUndo);
     if (noSave == 255) return;
     HANDLE hSave = CreateSaveFile(isUndo, noSave);
@@ -1902,10 +2001,12 @@ void RecoverDelBackground(bool isUndo)
     RecoverAdjustAction(isUndo);
 }
 
-// SA_ADDBACKGROUND: Save all the backgrounds
+
+
 
 void SaveAddBackground(bool isUndo)
 {
+    
     UINT noSave = GetFreeSaveFileNumber(isUndo);
     if (noSave == 255) return;
     HANDLE hSave = CreateSaveFile(isUndo, noSave);
@@ -1926,11 +2027,12 @@ void RecoverAddBackground(bool isUndo)
     RecoverDelBackground(isUndo);
 }
 
-//SA_SELBACKGROUND:
+
 
 void SaveSelBackground(bool isUndo)
 {
     UINT8* pBuffer;
+    
     if (isUndo && (UndoAvailableN > 1) && (UndoActionN[UndoAvailableN - 2] == SA_SELBACKGROUND) && (UndoActionN[UndoAvailableN - 1] == SA_SELBACKGROUND))
     {
         UndoAvailableN--;
@@ -1950,7 +2052,7 @@ void RecoverSelBackground(bool isUndo)
     RecoverAdjustAction(isUndo);
 }
 
-// SA_DELFRAMEBG:
+
 
 UINT CalcSizeFrameBG()
 {
@@ -1972,7 +2074,7 @@ void RecoverDelFrameBG(bool isUndo)
     RecoverAdjustAction(isUndo);
 }
 
-// SA_REIMPORTBACKGROUND:
+
 
 UINT CalcSizeReimportBG()
 {
@@ -2004,7 +2106,7 @@ void RecoverReimportBG(bool isUndo)
     RecoverAdjustAction(isUndo);
 }
 
-// SA_ACCOLOR:
+
 
 UINT CalcAcColors()
 {
@@ -2040,7 +2142,7 @@ void RecoverAcColors(bool isUndo)
     RecoverAdjustAction(isUndo);
 }
 
-// SA_TRIGGERID:
+
 
 void SaveTriggerID(bool isUndo)
 {
@@ -2057,8 +2159,14 @@ void RecoverTriggerID(bool isUndo)
 }
 
 
+
+
+
+
+
 void SaveAction(bool isUndo, int action)
 {
+    
     if (isUndo)
     {
         RedoAvailableN = 0;
@@ -2066,32 +2174,32 @@ void SaveAction(bool isUndo, int action)
     }
     switch (action)
     {
-    case SA_DRAW: // save before drawing
+    case SA_DRAW: 
         SaveDrawFrames(isUndo);
         break;
-    case SA_SPRITEDRAW: // save before drawing
+    case SA_SPRITEDRAW: 
         SaveDrawSprite(isUndo);
         break;
-    case SA_FULLDRAW: // save before drawing + dynamic (mask, sets)
+    case SA_FULLDRAW: 
         SaveFullDrawFrames(isUndo);
         break;
-    case SA_DRAWPAL: // save before drawing
+    case SA_DRAWPAL: 
         SaveDrawPalFrames(isUndo);
         break;
-    case SA_SELECTION: // save before changing selection
+    case SA_SELECTION: 
         SaveSelection(isUndo);
         break;
-    case SA_COMPMASK: // save before changing comp mask
+    case SA_COMPMASK: 
        SaveCompMask(isUndo);
         break;
-    case SA_PALETTE: // save before changing palette
+    case SA_PALETTE: 
         SavePalette(isUndo);
         break;
-    //case SA_MOVCOMPPATTERN: // save before changing moving comparison pattern
- //       SaveMovCompPattern(isUndo);
-    //case SA_EDITCOLOR:
-    //    SaveEditColor(isUndo);
-    //    break;
+    
+ 
+    
+    
+    
     case SA_DYNACOLOR:
         SaveDynaColor(isUndo);
         break;
@@ -2113,9 +2221,9 @@ void SaveAction(bool isUndo, int action)
     case SA_DYNAMASK:
         SaveDynaMask(isUndo);
         break;
-    //case SA_SPRITECOLOR:
-    //    SaveSpriteCol(isUndo);
-    //    break;
+    
+    
+    
     case SA_ACSPRITE:
         SaveAcSprite(isUndo);
         break;
@@ -2182,7 +2290,8 @@ void SaveAction(bool isUndo, int action)
     }
     /*UpdateFSneeded = true;
     UpdateSSneeded = true;
-    UpdateBSneeded = true;*/
+    UpdateBSneeded = true;
+    */
     UpdateURCounts();
     if (UndoAvailableN > 0)
     {
@@ -2225,31 +2334,31 @@ void RecoverAction(bool isUndo)
     }
     switch (action)
     {
-    case SA_DRAW: // save before drawing
+    case SA_DRAW: 
         SaveDrawFrames(!isUndo);
         RecoverDrawFrames(isUndo);
         break;
-    case SA_SPRITEDRAW: // save before drawing
+    case SA_SPRITEDRAW: 
         SaveDrawSprite(!isUndo);
         RecoverDrawSprite(isUndo);
         break;
-    case SA_FULLDRAW: // save before drawing + dynamic (mask, sets)
+    case SA_FULLDRAW: 
         SaveFullDrawFrames(!isUndo);
         RecoverFullDrawFrames(isUndo);
         break;
-    case SA_DRAWPAL: // save before drawing
+    case SA_DRAWPAL: 
         SaveDrawPalFrames(!isUndo);
         RecoverDrawPalFrames(isUndo);
         break;
-    case SA_SELECTION: // save before changing selection
+    case SA_SELECTION: 
         SaveSelection(!isUndo);
         RecoverSelection(isUndo);
         break;
-    case SA_COMPMASK: // save before changing comp mask
+    case SA_COMPMASK: 
         SaveCompMask(!isUndo);
         RecoverCompMask(isUndo);
         break;
-    case SA_PALETTE: // save before changing palette
+    case SA_PALETTE: 
         SavePalette(!isUndo);
         RecoverPalette(isUndo);
         break;
@@ -2402,7 +2511,7 @@ void RecoverAction(bool isUndo)
 
 #pragma region Debug_Tools
 
-void cprintf(bool isFlash, const char* format,...) // write to the console
+void cprintf(bool isFlash, const char* format,...) 
 {
     char tbuf[5000];
     va_list argptr;
@@ -2419,6 +2528,8 @@ void cprintf(bool isFlash, const char* format,...) // write to the console
 
 void AffLastError(char* lpszFunction)
 {
+    
+
     char* lpMsgBuf;
     char* lpDisplayBuf;
     DWORD dw = GetLastError();
@@ -2432,6 +2543,8 @@ void AffLastError(char* lpszFunction)
         MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
         (LPSTR)&lpMsgBuf,
         0, NULL);
+
+    
 
     lpDisplayBuf = (char*)LocalAlloc(LMEM_ZEROINIT,
         (strlen((LPCSTR)lpMsgBuf) + strlen((LPCSTR)lpszFunction) + 40) * sizeof(char));
@@ -2451,6 +2564,10 @@ void AffLastError(char* lpszFunction)
 
 void Del_Buffer_Element(UINT8* pBuf, UINT* pnElt, UINT noElt, UINT Elt_Size)
 {
+    /* Erase the noElt-th element of the buffer pointed by pBuf.
+    * Before the function, the buffer contains *pnElt element and each element is Elt_Size byte long.
+    * Shift all the elements after noElt to the left and reduce the buffer size with realloc. *pnElt is decremetend at the end.
+    */
     if (noElt >= (*pnElt)) return;
     if ((*pnElt) == 1)
     {
@@ -2464,17 +2581,38 @@ void Del_Buffer_Element(UINT8* pBuf, UINT* pnElt, UINT noElt, UINT Elt_Size)
     (*pnElt)--;
 }
 
+/*bool Add_Buffer_Element(UINT8* pBuf, UINT* pnElt, UINT Elt_Size, UINT8* pSrc)
+{
+    
+    
+    
+    
+    
+    pBuf = (UINT8*)realloc(pBuf, ((*pnElt) + 1) * Elt_Size);
+    if (!pBuf)
+    {
+        cprintf("Unable to increase the buffer size in Add_Buffer_Element");
+        return false;
+    }
+    if (pSrc != NULL) memcpy(&pBuf[(*pnElt) * Elt_Size], pSrc, Elt_Size); else memset(&pBuf[(*pnElt) * Elt_Size], 0, Elt_Size);
+    (*pnElt)++;
+    return true;
+}
+*/
+
 #pragma endregion Memory_Tools
 
 #pragma region Color_Tools
+
+
+
 
 void hsv_to_rgb888(float h, float s, float v, UINT8* r, UINT8* g, UINT8* b)
 {
     int i;
     float f, p, q, t;
 
-    if (s == 0)
-    {
+    if (s == 0) {
         *r = *g = *b = (int)(v * 255);
         return;
     }
@@ -2482,10 +2620,11 @@ void hsv_to_rgb888(float h, float s, float v, UINT8* r, UINT8* g, UINT8* b)
     if (h < 0) {
         h += 360.0;
     }
+    
     s = (float)fmin(fmax(s, 0.0), 100.0);
     v = (float)fmin(fmax(v, 0.0), 100.0);
-    s /= 100.0;
-    v /= 100.0;
+    s /= 100.0; 
+    v /= 100.0; 
 
     h /= 60;
     i = (int)h;
@@ -2527,11 +2666,17 @@ void hsv_to_rgb888(float h, float s, float v, UINT8* r, UINT8* g, UINT8* b)
         break;
     }
 }
+
+
+
 void rgb888_to_hex(UINT8 r, UINT8 g, UINT8 b, char* pHex)
 {
     UINT val = (((UINT)r) << 16) + (((UINT)g) << 8) + (UINT)b;
     sprintf_s(pHex, 16, "%06X", val);
 }
+
+
+
 void rgb888_to_hsv(UINT8 r, UINT8 g, UINT8 b, float* h, float* s, float* v)
 {
     float red = (float)r / 255;
@@ -2557,18 +2702,35 @@ void rgb888_to_hsv(UINT8 r, UINT8 g, UINT8 b, float* h, float* s, float* v)
     *s = (cmax == 0 ? 0 : delta / cmax) * 100;
     *v = cmax * 100;
 }
+
+
+
+
+
 UINT16 rgb565togray565(UINT16 color)
 {
-    UINT16 R = (color & 0b1111100000000000) >> 10;
+    
+    UINT16 R = (color & 0b1111100000000000) >> 10; 
     UINT16 G = (color & 0b0000011111100000) >> 5;
-    UINT16 B = (color & 0b0000000000011111) << 1;
+    UINT16 B = (color & 0b0000000000011111) << 1; 
     UINT16 graylevel = (UINT16)(0.21f * (float)R + 0.72f * (float)G + 0.07f * (float)B);
     B = R = graylevel >> 1;
     G = graylevel;
     return ((R << 11) + (G << 5) + B);
 }
+
+
+
+
+
+
 void CopyDynaCol(UINT fromframe, UINT toframe)
 {
+    /*for (UINT ti = 0; ti < MycRom.ncColors * 3; ti++)
+    {
+        MycRom.cPal[toframe * 3 * MycRom.ncColors + ti] = MycRom.cPal[fromframe * 3 * MycRom.ncColors + ti];
+    }
+    */
     for (UINT ti = 0; ti < MAX_DYNA_SETS_PER_FRAMEN; ti++)
     {
         for (UINT tj = 0; tj < MycRom.noColors; tj++)
@@ -2579,6 +2741,10 @@ void CopyDynaCol(UINT fromframe, UINT toframe)
         }
     }
 }
+
+
+
+
 
 void Choose_Color_Palette(int butid)
 {
@@ -2591,7 +2757,7 @@ void Choose_Color_Palette(int butid)
     if (butid < IDC_DYNACOL1) noColMod = butid - IDC_COL1; else noColMod = butid - IDC_DYNACOL1 + 16;
     int sh = 160 + MARGIN_PALETTE_X + MARGIN_PALETTE_Y;
     if (MycRP.isImported >0 ) sh += MARGIN_PALETTE_X + 160;
-    hPal = CreateWindowEx(0, L"Palette", L"", WS_POPUP, rc.left, rc.top, 160 + 2 * MARGIN_PALETTE_X, sh, NULL, NULL, hInst, NULL);       // Parent window
+    hPal = CreateWindowEx(0, L"Palette", L"", WS_POPUP, rc.left, rc.top, 160 + 2 * MARGIN_PALETTE_X, sh, NULL, NULL, hInst, NULL);       
     if (!hPal)
     {
         AffLastError((char*)"Create Pal Window");
@@ -2609,7 +2775,7 @@ void Choose_Color_Palette2(int butid)
     if (hPal3) DestroyWindow(hPal3);
     hPal = hPal3 = NULL;
     noColMod = butid - IDC_COL1;
-    hPal2 = CreateWindowEx(0, L"Palette", L"", WS_POPUP, rc.left, rc.top, 160 + 2 * MARGIN_PALETTE_X, 160 + MARGIN_PALETTE_X + MARGIN_PALETTE_Y, NULL, NULL, hInst, NULL);       // Parent window.
+    hPal2 = CreateWindowEx(0, L"Palette", L"", WS_POPUP, rc.left, rc.top, 160 + 2 * MARGIN_PALETTE_X, 160 + MARGIN_PALETTE_X + MARGIN_PALETTE_Y, NULL, NULL, hInst, NULL);       
     if (!hPal2)
     {
         AffLastError((char*)"Create Pal Window");
@@ -2626,7 +2792,7 @@ void Choose_Color_Palette3(void)
     if (hPal2) DestroyWindow(hPal2);
     if (hPal3) DestroyWindow(hPal3);
     hPal2 = hPal = NULL;
-    hPal3 = CreateWindowEx(0, L"Palette", L"", WS_POPUP, rc.left, rc.top, 160 + 2 * MARGIN_PALETTE_X, 160 + MARGIN_PALETTE_X + MARGIN_PALETTE_Y, NULL, NULL, hInst, NULL);       // Parent window.
+    hPal3 = CreateWindowEx(0, L"Palette", L"", WS_POPUP, rc.left, rc.top, 160 + 2 * MARGIN_PALETTE_X, 160 + MARGIN_PALETTE_X + MARGIN_PALETTE_Y, NULL, NULL, hInst, NULL);       
     if (!hPal3)
     {
         AffLastError((char*)"Create Pal Window");
@@ -2634,6 +2800,9 @@ void Choose_Color_Palette3(void)
     }
     ShowWindow(hPal3, true);
 }
+
+
+
 void DrawBitmap(HDC hdc, HBITMAP hBitmap, int x, int y, int width, int height)
 {
     HDC hdcMem = CreateCompatibleDC(hdc);
@@ -2643,6 +2812,10 @@ void DrawBitmap(HDC hdc, HBITMAP hBitmap, int x, int y, int width, int height)
     DeleteDC(hdcMem);
 }
 int ncolpickthumbPos = 0;
+
+
+
+
 void UpdateHSValues(HWND hwD)
 {
     char tbuf[32];
@@ -2651,6 +2824,10 @@ void UpdateHSValues(HWND hwD)
     sprintf_s(tbuf, 32, "%u", (UINT)(roundf(ColPick_S)));
     SetDlgItemTextA(hwD, IDC_S, tbuf);
 }
+
+
+
+
 void UpdateVValues(HWND hwD)
 {
     char tbuf[32];
@@ -2658,6 +2835,10 @@ void UpdateVValues(HWND hwD)
     SetDlgItemTextA(hwD, IDC_V, tbuf);
 
 }
+
+
+
+
 void UpdateRGBValues(HWND hwD)
 {
     char tbuf[32];
@@ -2678,10 +2859,16 @@ void UpdateRGBValues(HWND hwD)
     sprintf_s(tbuf, 32, "%05u", (UINT)rgb888_to_rgb565(ColPick_R8, ColPick_G8, ColPick_B8));
     SetDlgItemTextA(hwD, IDC_RGB565, tbuf);
 }
+
+
+
 void CalcColFromHSV(void)
 {
     hsv_to_rgb888(ColPick_H, ColPick_S, ColPick_V, &ColPick_R8, &ColPick_G8, &ColPick_B8);
 }
+
+
+
 void CalcColFromRGB888(void)
 {
     rgb888_to_hsv(ColPick_R8, ColPick_G8, ColPick_B8, &ColPick_H, &ColPick_S, &ColPick_V);
@@ -2693,6 +2880,11 @@ UINT8 hexCharToUint8(char c)
     else if (c >= 'a' && c <= 'f') return c - 'a' + 10;
     else return -1;
 }
+
+
+
+
+
 UINT8 hexStringToUint8(char* hexString)
 {
     UINT8 result = 0;
@@ -2702,6 +2894,9 @@ UINT8 hexStringToUint8(char* hexString)
 }
 
 HWND hColPick = NULL;
+
+
+
 LRESULT CALLBACK RGB888Proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     switch (msg)
@@ -2709,7 +2904,7 @@ LRESULT CALLBACK RGB888Proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         case WM_CHAR:
         {
             if (!isxdigit((char)wParam) && wParam != 0x03 && wParam != 0x16 && wParam != 0x18 && wParam != 0x08 && wParam != 0x09 && wParam != 0x0D)
-                return 0;
+                return 0;  
             break;
         }
         case WM_SETFOCUS:
@@ -2720,7 +2915,7 @@ LRESULT CALLBACK RGB888Proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         }
         case WM_PASTE:
         {
-            // Filter pasted text
+            
             if (!IsClipboardFormatAvailable(CF_TEXT)) break;
 
             if (!OpenClipboard(hwnd)) break;
@@ -2739,16 +2934,17 @@ LRESULT CALLBACK RGB888Proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 break;
             }
 
+            
             char tbuf[8];
             int j = 0;
             for (size_t i = 0; i < strlen(pszClipboardText); ++i)
             {
                 if (isxdigit(pszClipboardText[i]) ||
-                    pszClipboardText[i] == '\b' || // Backspace
-                    pszClipboardText[i] == '\t' || // Tab
-                    pszClipboardText[i] == '\x16' || // Ctrl+V (Paste)
-                    pszClipboardText[i] == '\x18' || // Ctrl+X (Cut)
-                    pszClipboardText[i] == '\x03' || // Ctrl+C (Copy)
+                    pszClipboardText[i] == '\b' || 
+                    pszClipboardText[i] == '\t' || 
+                    pszClipboardText[i] == '\x16' || 
+                    pszClipboardText[i] == '\x18' || 
+                    pszClipboardText[i] == '\x03' || 
                     pszClipboardText[i] == '\x7F')
                 {
                     tbuf[j] = pszClipboardText[i];
@@ -2758,9 +2954,13 @@ LRESULT CALLBACK RGB888Proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             }
             tbuf[j] = 0;
             SetWindowTextA(hwnd, tbuf);
+            
+            
+            
 
             GlobalUnlock(hClipboardData);
             CloseClipboard();
+            
         }
         case WM_KILLFOCUS:
         {
@@ -2789,6 +2989,9 @@ LRESULT CALLBACK RGB888Proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     }
     return DefSubclassProc(hwnd, msg, wParam, lParam);
 }
+
+
+
 LRESULT CALLBACK RGB8Proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     if (msg == WM_KILLFOCUS)
@@ -2820,6 +3023,9 @@ LRESULT CALLBACK RGB8Proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
     return DefSubclassProc(hwnd, msg, wParam, lParam);
 }
+
+
+
 LRESULT CALLBACK RGB565Proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     if (msg == WM_KILLFOCUS)
@@ -2842,6 +3048,7 @@ LRESULT CALLBACK RGB565Proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     }
     else if (msg==WM_PASTE)
     {
+        
         if (IsClipboardFormatAvailable(CF_TEXT))
         {
             if (OpenClipboard(hwnd))
@@ -2852,16 +3059,17 @@ LRESULT CALLBACK RGB565Proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                     char* pszClipboardText = static_cast<char*>(GlobalLock(hClipboardData));
                     if (pszClipboardText != nullptr)
                     {
+                        
                         char tbuf[16];
                         int j = 0;
                         for (size_t i = 0; i < strlen(pszClipboardText); ++i)
                         {
                             if (isdigit(pszClipboardText[i]) ||
-                                pszClipboardText[i] == '\b' || // Backspace
-                                pszClipboardText[i] == '\t' || // Tab
-                                pszClipboardText[i] == '\x16' || // Ctrl+V (Paste)
-                                pszClipboardText[i] == '\x18' || // Ctrl+X (Cut)
-                                pszClipboardText[i] == '\x03' || // Ctrl+C (Copy)
+                                pszClipboardText[i] == '\b' || 
+                                pszClipboardText[i] == '\t' || 
+                                pszClipboardText[i] == '\x16' || 
+                                pszClipboardText[i] == '\x18' || 
+                                pszClipboardText[i] == '\x03' || 
                                 pszClipboardText[i] == '\x7F')
                             {
                                 tbuf[j] = pszClipboardText[i];
@@ -2900,6 +3108,9 @@ LRESULT CALLBACK RGB565Proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
     return DefSubclassProc(hwnd, msg, wParam, lParam);
 }
+
+
+
 LRESULT CALLBACK RGB5Proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     if (msg == WM_KILLFOCUS)
@@ -2915,9 +3126,9 @@ LRESULT CALLBACK RGB5Proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         _itoa_s(val32, tbuf, 16, 10);
         SetWindowTextA(hwnd, tbuf);
 
-        if (hwnd == GetDlgItem(hColPick, IDC_R5)) ColPick_R8 = val << 3 | val >> 2; // bit shift + copy rgb565 most significant bits to rgb888 less significant bits (see rgb565_to_rgb888() functions)
-        else if (hwnd == GetDlgItem(hColPick, IDC_G6)) ColPick_G8 = val << 2 | val >> 4; // bit shift + copy rgb565 most significant bits to rgb888 less significant bits (see rgb565_to_rgb888() functions)
-        else if (hwnd == GetDlgItem(hColPick, IDC_B5)) ColPick_B8 = val << 3 | val >> 2; // bit shift + copy rgb565 most significant bits to rgb888 less significant bits (see rgb565_to_rgb888() functions)
+        if (hwnd == GetDlgItem(hColPick, IDC_R5)) ColPick_R8 = val << 3 | val >> 2; 
+        else if (hwnd == GetDlgItem(hColPick, IDC_G6)) ColPick_G8 = val << 2 | val >> 4; 
+        else if (hwnd == GetDlgItem(hColPick, IDC_B5)) ColPick_B8 = val << 3 | val >> 2; 
         else return DefSubclassProc(hwnd, msg, wParam, lParam);
         rgb888_to_hsv(ColPick_R8, ColPick_G8, ColPick_B8, &ColPick_H, &ColPick_S, &ColPick_V);
         UpdateHSValues(hColPick);
@@ -2934,6 +3145,9 @@ LRESULT CALLBACK RGB5Proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     }
     return DefSubclassProc(hwnd, msg, wParam, lParam);
 }
+
+
+
 LRESULT CALLBACK HSVProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     if (msg == WM_KILLFOCUS)
@@ -2973,12 +3187,16 @@ bool iscolpickbpressed = false;
 int ColPickReturnValue = 0;
 UINT16 IniPickCol;
 UINT16 previousPickedColors[8] = { 0,0,0,0,0,0,0,0 };
+
+
+
 LRESULT CALLBACK ColPickProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     switch (uMsg)
     {
         case WM_INITDIALOG:
             {
+                
                 MoveWindow(GetDlgItem(hwndDlg, IDC_COLORPICK), 20, 20, 512, 512, TRUE);
                 if (!hColPickBitmap)
                 {
@@ -2990,6 +3208,7 @@ LRESULT CALLBACK ColPickProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lPar
                     if (hColPickBitmap == NULL) AffLastError((char*)"LoadImage");
                 }
                 hColPick = hwndDlg;
+                
                 HWND slider = GetDlgItem(hwndDlg, IDC_LUMIN);
                 SendMessage(slider, TBM_SETRANGE, TRUE, MAKELONG(0, 500));
                 SendMessage(slider, TBM_SETTICFREQ, 50, 0);
@@ -3033,7 +3252,9 @@ LRESULT CALLBACK ColPickProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lPar
             {
                 case IDOK:
                 {
+                    
                     ColPickReturnValue = (int)rgb888_to_rgb565(ColPick_R8, ColPick_G8, ColPick_B8);
+                    
                     for (int ti = 0; ti < 8; ti++)
                     {
                         if (previousPickedColors[ti] == ColPickReturnValue)
@@ -3041,6 +3262,7 @@ LRESULT CALLBACK ColPickProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lPar
                             for (int tj = ti; tj < 7; tj++) previousPickedColors[tj] = previousPickedColors[tj + 1];
                         }
                     }
+                    
                     for (int ti = 7; ti > 0; ti--) previousPickedColors[ti] = previousPickedColors[ti - 1];
                     previousPickedColors[0] = ColPickReturnValue;
                     EndDialog(hwndDlg, IDOK);
@@ -3048,6 +3270,7 @@ LRESULT CALLBACK ColPickProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lPar
                 }
                 case IDCANCEL:
                 {
+                    
                     ColPickReturnValue = -1;
                     EndDialog(hwndDlg, IDCANCEL);
                     return TRUE;
@@ -3078,32 +3301,37 @@ LRESULT CALLBACK ColPickProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lPar
             {
                 PAINTSTRUCT ps;
                 HDC hdc = BeginPaint(hwndDlg, &ps);
+                
                 HWND hControl = GetDlgItem(hwndDlg, IDC_COLORPICK);
                 RECT rectb;
-                GetWindowRect(hControl, &rectb);
-                ScreenToClient(hwndDlg, (LPPOINT)&rectb.left);
-                ScreenToClient(hwndDlg, (LPPOINT)&rectb.right);
+                GetWindowRect(hControl, &rectb); 
+                ScreenToClient(hwndDlg, (LPPOINT)&rectb.left); 
+                ScreenToClient(hwndDlg, (LPPOINT)&rectb.right); 
+                
+                
                 int controlWidth = rectb.right - rectb.left;
                 int controlHeight = rectb.bottom - rectb.top;
                 DrawBitmap(hdc, hColPickBitmap, rectb.left, rectb.top, controlWidth, controlHeight);
+                
                 int crossSize = 20;
                 int halfCrossSize = crossSize / 2;
                 int xc = (int)(ColPick_H / 360.0f * 512) + rectb.left;
                 int yc = 512 - (int)(ColPick_S / 100.0f * 512) + rectb.top;
                 IntersectClipRect(hdc, rectb.left, rectb.top, rectb.right, rectb.bottom);
-                HPEN hPen = CreatePen(PS_SOLID, 3, RGB(255, 255, 255)); // White pen
+                HPEN hPen = CreatePen(PS_SOLID, 3, RGB(255, 255, 255)); 
                 SelectObject(hdc, hPen);
                 MoveToEx(hdc, xc - halfCrossSize, yc, NULL);
                 LineTo(hdc, xc + halfCrossSize, yc); 
                 MoveToEx(hdc, xc, yc - halfCrossSize, NULL);
-                LineTo(hdc, xc, yc + halfCrossSize);
+                LineTo(hdc, xc, yc + halfCrossSize); 
                 DeleteObject(hPen);
                 SelectClipRgn(hdc, NULL);
+                
                 RECT rectc;
                 hControl = GetDlgItem(hwndDlg, IDC_COLORR);
                 GetWindowRect(hControl, &rectb);
-                ScreenToClient(hwndDlg, (LPPOINT)&rectb.left);
-                ScreenToClient(hwndDlg, (LPPOINT)&rectb.right);
+                ScreenToClient(hwndDlg, (LPPOINT)&rectb.left); 
+                ScreenToClient(hwndDlg, (LPPOINT)&rectb.right); 
                 LONG halfw = (rectb.right - rectb.left) / 2;
                 LONG thirdh = (rectb.bottom - rectb.top) / 3;
                 HBRUSH hBrush = CreateSolidBrush(RGB(ColPick_R8, ColPick_G8 ,ColPick_B8));
@@ -3113,6 +3341,7 @@ LRESULT CALLBACK ColPickProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lPar
                 rectc.right = rectb.left + halfw;
                 FillRect(hdc, &rectc, hBrush);
                 DeleteObject(hBrush);
+                
                 UINT16 rgb565 = rgb888_to_rgb565(ColPick_R8, ColPick_G8, ColPick_B8);
                 UINT8 rgb888[3];
                 rgb565_to_rgb888(rgb565, rgb888);
@@ -3122,7 +3351,7 @@ LRESULT CALLBACK ColPickProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lPar
                 FillRect(hdc, &rectc, hBrush);
                 DeleteObject(hBrush);
                 DeleteObject(hPen);
-                hPen = CreatePen(PS_SOLID, 1, RGB(255, 255, 255));
+                hPen = CreatePen(PS_SOLID, 1, RGB(255, 255, 255)); 
                 SelectObject(hdc, hPen);
                 MoveToEx(hdc, rectc.left, rectc.top, NULL);
                 LineTo(hdc, rectc.left, rectc.top + thirdh);
@@ -3138,6 +3367,7 @@ LRESULT CALLBACK ColPickProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lPar
             UINT tpm;
             if ((lpdis->CtlID >= IDC_OLDCOL1) && (lpdis->CtlID <= IDC_OLDCOL8))
             {
+                
                 if (lpdis->CtlID) tpm = lpdis->CtlID - IDC_OLDCOL1;
                 HBRUSH bg = CreateSolidBrush(RGB565_to_RGB888(previousPickedColors[tpm]));
                 RECT rc = lpdis->rcItem;
@@ -3150,7 +3380,8 @@ LRESULT CALLBACK ColPickProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lPar
                 rc.left += 2;
                 rc.right -= 2;
                 rc.top += 2;
-                rc.bottom -= 2;*/
+                rc.bottom -= 2;
+                */
                 FillRect(lpdis->hDC, &rc, bg);
                 DeleteObject(bg);
             }
@@ -3168,12 +3399,13 @@ LRESULT CALLBACK ColPickProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lPar
             }
         case WM_LBUTTONDOWN:
             {
+                
                 int mouseX = GET_X_LPARAM(lParam);
                 int mouseY = GET_Y_LPARAM(lParam);
                 HWND hWndControl = GetDlgItem(hwndDlg, IDC_COLORPICK);
                 RECT rectb;
-                GetWindowRect(hWndControl, &rectb);
-                ScreenToClient(hwndDlg, (LPPOINT)&rectb.left);
+                GetWindowRect(hWndControl, &rectb); 
+                ScreenToClient(hwndDlg, (LPPOINT)&rectb.left); 
                 ScreenToClient(hwndDlg, (LPPOINT)&rectb.right);
                 int relativeX = mouseX - rectb.left;
                 int relativeY = mouseY - rectb.top;
@@ -3191,16 +3423,18 @@ LRESULT CALLBACK ColPickProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lPar
             }
         case WM_MOUSEMOVE:
             {
+                
                 if (!iscolpickbpressed) return TRUE;
                 int mouseX = GET_X_LPARAM(lParam);
                 int mouseY = GET_Y_LPARAM(lParam);
                 HWND hWndControl = GetDlgItem(hwndDlg, IDC_COLORPICK);
                 RECT rectb;
-                GetWindowRect(hWndControl, &rectb);
-                ScreenToClient(hwndDlg, (LPPOINT)&rectb.left);
+                GetWindowRect(hWndControl, &rectb); 
+                ScreenToClient(hwndDlg, (LPPOINT)&rectb.left); 
                 ScreenToClient(hwndDlg, (LPPOINT)&rectb.right);
                 int relativeX = mouseX - rectb.left;
                 int relativeY = mouseY - rectb.top;
+                
                 if (relativeX < 0) relativeX = 0;
                 else if (relativeX > 512) relativeX = 512;
                 if (relativeY < 0) relativeY = 0;
@@ -3215,10 +3449,11 @@ LRESULT CALLBACK ColPickProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lPar
             }
         case WM_VSCROLL:
             {
-                int nScrollCode = LOWORD(wParam);
+                
+                int nScrollCode = LOWORD(wParam); 
                 switch (nScrollCode)
                 {
-                    case SB_PAGEDOWN:
+                    case SB_PAGEDOWN:         
                     {
                         ncolpickthumbPos += 50;
                         if (ncolpickthumbPos > 500) ncolpickthumbPos = 500;
@@ -3231,7 +3466,7 @@ LRESULT CALLBACK ColPickProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lPar
                         InvalidateRect(hwndDlg, NULL, FALSE);
                         return TRUE;
                     }
-                    case SB_PAGEUP:
+                    case SB_PAGEUP:         
                     {
                         ncolpickthumbPos -= 50;
                         if (ncolpickthumbPos < 0) ncolpickthumbPos = 0;
@@ -3244,10 +3479,12 @@ LRESULT CALLBACK ColPickProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lPar
                         InvalidateRect(hwndDlg, NULL, FALSE);
                         return TRUE;
                     }
-                    case SB_THUMBPOSITION: 
-                    case SB_THUMBTRACK:
+                    case SB_THUMBPOSITION:  
+                    case SB_THUMBTRACK:     
+                    
+                    
                     {
-                        ncolpickthumbPos = HIWORD(wParam);    
+                        ncolpickthumbPos = HIWORD(wParam);         
                         ColPick_V = 100 - (float)ncolpickthumbPos / 500.0f * 100;
                         UpdateHSValues(hwndDlg);
                         UpdateVValues(hwndDlg);
@@ -3261,6 +3498,12 @@ LRESULT CALLBACK ColPickProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lPar
     }
     return FALSE;
 }
+
+
+
+
+
+
 bool ColorPicker(UINT16* pRGB,LONG xm,LONG ym, HWND hparent)
 {
     IniPickCol = *pRGB;
@@ -3274,7 +3517,7 @@ bool ColorPicker(UINT16* pRGB,LONG xm,LONG ym, HWND hparent)
         if (noColMod < 16) butid = IDC_COL1 + noColMod; else butid = IDC_DYNACOL1 + noColMod - 16;
         if (hparent==hPal) Choose_Color_Palette(butid);
         else Choose_Color_Palette2(butid);
-        //InvalidateRect(GetDlgItem(hwTB3, IDC_COLORS), NULL, FALSE);
+        
         return true;
     }
     SetCursorPos(xm, ym);
@@ -3282,9 +3525,16 @@ bool ColorPicker(UINT16* pRGB,LONG xm,LONG ym, HWND hparent)
     if (noColMod < 16) butid = IDC_COL1 + noColMod; else butid = IDC_DYNACOL1 + noColMod - 16;
     if (hparent == hPal) Choose_Color_Palette(butid);
     else Choose_Color_Palette2(butid);
-    //InvalidateRect(GetDlgItem(hwTB3, IDC_COLORS), NULL, FALSE);
+    
     return false;
 }
+
+
+
+
+
+
+
 void ResizeDynaMask(UINT8* pdImage, UINT dwidth, UINT dheight, UINT8* psImage, bool shrink)
 {
     for (UINT tj = 0; tj < dheight; tj++)
@@ -3304,6 +3554,13 @@ void ResizeDynaMask(UINT8* pdImage, UINT dwidth, UINT dheight, UINT8* psImage, b
         }
     }
 }
+
+
+
+
+
+
+
 void ResizeBGMask(UINT8* pdImage, UINT dwidth, UINT dheight, UINT8* psImage, bool shrink)
 {
     for (UINT tj = 0; tj < dheight; tj++)
@@ -3324,20 +3581,30 @@ void ResizeBGMask(UINT8* pdImage, UINT dwidth, UINT dheight, UINT8* psImage, boo
         }
     }
 }
+
+
+
+
+
+
+
 void ResizeRGB565Image(UINT16* pdImage, UINT dwidth, UINT dheight, UINT16* psImage, UINT swidth, UINT sheight, int filter)
 {
     cv::Mat imageMat(sheight, swidth, CV_8UC3);
     UINT8 rgb888[3];
+    
     for (UINT y = 0; y < sheight; ++y)
     {
         for (UINT x = 0; x < swidth; ++x)
         {
             rgb565_to_rgb888(psImage[y * swidth + x], rgb888);
-            imageMat.at<cv::Vec3b>(y, x) = cv::Vec3b(rgb888[2], rgb888[1], rgb888[0]); // OpenCV uses BGR ordering, so we need to swap R and B channels
+            imageMat.at<cv::Vec3b>(y, x) = cv::Vec3b(rgb888[2], rgb888[1], rgb888[0]); 
         }
     }
+    
     cv::Mat destmat;
     cv::resize(imageMat, destmat, cv::Size(dwidth, dheight), 0, 0, filter);
+    
     for (UINT y = 0; y < dheight; ++y)
     {
         for (UINT x = 0; x < dwidth; ++x)
@@ -3347,10 +3614,11 @@ void ResizeRGB565Image(UINT16* pdImage, UINT dwidth, UINT dheight, UINT16* psIma
         }
     }
 }
-//ResizeRGB565Sprite(&MycRom.SpriteColoredX[acSprite * MAX_SPRITE_WIDTH * MAX_SPRITE_HEIGHT], &MycRom.SpriteColored[acSprite * MAX_SPRITE_WIDTH * MAX_SPRITE_HEIGHT]);
-//ResizeSpriteMask(&MycRom.SpriteMaskX[acSprite * MAX_SPRITE_WIDTH * MAX_SPRITE_HEIGHT], &MycRom.SpriteOriginal[acSprite * MAX_SPRITE_WIDTH * MAX_SPRITE_HEIGHT], MycRom.fHeight == 64);
+
+
 void ResizeRGB565Sprite(UINT16* pdSprite, UINT8* pdSprMask, UINT16* psSprite, UINT8* psSprMask, bool shrink, int filter)
 {
+    
     int ssprw=0, ssprh=0;
     for (int tj = 0; tj < MAX_SPRITE_HEIGHT; tj++)
     {
@@ -3367,12 +3635,13 @@ void ResizeRGB565Sprite(UINT16* pdSprite, UINT8* pdSprMask, UINT16* psSprite, UI
     ssprw++;
     cv::Mat imageMat(ssprh, ssprw, CV_8UC3);
     UINT8 rgb888[3];
+    
     for (int y = 0; y < ssprh; ++y)
     {
         for (int x = 0; x < ssprw; ++x)
         {
             rgb565_to_rgb888(psSprite[y * MAX_SPRITE_WIDTH + x], rgb888);
-            imageMat.at<cv::Vec3b>(y, x) = cv::Vec3b(rgb888[2], rgb888[1], rgb888[0]);
+            imageMat.at<cv::Vec3b>(y, x) = cv::Vec3b(rgb888[2], rgb888[1], rgb888[0]); 
         }
     }
     int dsprw, dsprh;
@@ -3386,8 +3655,10 @@ void ResizeRGB565Sprite(UINT16* pdSprite, UINT8* pdSprMask, UINT16* psSprite, UI
         dsprw = min(ssprw * 2, MAX_SPRITE_WIDTH);
         dsprh = min(ssprh * 2, MAX_SPRITE_HEIGHT);
     }
+    
     cv::Mat destmat;
     cv::resize(imageMat, destmat, cv::Size(dsprw, dsprh), 0, 0, filter);
+    
     for (int y = 0; y < dsprh; ++y)
     {
         for (int x = 0; x < dsprw; ++x)
@@ -3410,6 +3681,13 @@ void ResizeRGB565Sprite(UINT16* pdSprite, UINT8* pdSprMask, UINT16* psSprite, UI
 
 
 UINT8 draw_color[4],under_draw_color[4];
+
+
+
+
+
+
+
 void SetRenderDrawColor(UINT8 R, UINT8 G, UINT8 B, UINT8 A)
 {
     draw_color[0] = R;
@@ -3417,6 +3695,11 @@ void SetRenderDrawColor(UINT8 R, UINT8 G, UINT8 B, UINT8 A)
     draw_color[2] = B;
     draw_color[3] = A;
 }
+
+
+
+
+
 void SetRenderDrawColorv(UINT8* col3, UINT8 A)
 {
     draw_color[0] = col3[0];
@@ -3424,6 +3707,13 @@ void SetRenderDrawColorv(UINT8* col3, UINT8 A)
     draw_color[2] = col3[2];
     draw_color[3] = A;
 }
+
+
+
+
+
+
+
 void SetRenderDrawColor565(UINT16 RGB565, UINT8 A)
 {
     draw_color[0] = (UINT8)((RGB565 & 0b1111100000000000) >> 8);
@@ -3433,21 +3723,25 @@ void SetRenderDrawColor565(UINT16 RGB565, UINT8 A)
 }
 void Init_oFrame_Palette(UINT16* pPal)
 {
-    for (unsigned int ti = 0; ti < MycRom.noColors; ti++)
+    
+    for (unsigned int ti = 0; ti < MycRom.noColors; ti++) 
     {
         originalcolors[ti] = pPal[ti];
     }
 }
 void Init_cFrame_Palette2(void)
 {
-    for (unsigned int ti = 0; ti < MycRom.noColors; ti++)
+    for (unsigned int ti = 0; ti < MycRom.noColors; ti++) 
     {
         MycRP.acEditColorsS[ti] = MycRP.Palette[ti] = originalcolors[ti] = 
-            (UINT16)(31.0 * (float)ti / (float)(MycRom.noColors - 1)) << 11 |
-            (UINT16)(31.0 * (float)ti / (float)(MycRom.noColors - 1)) << 5 |
-            (UINT16)(0.0 * (float)ti / (float)(MycRom.noColors - 1));
+            (UINT16)(31.0 * (float)ti / (float)(MycRom.noColors - 1)) << 11 | 
+            (UINT16)(31.0 * (float)ti / (float)(MycRom.noColors - 1)) << 5 | 
+            (UINT16)(0.0 * (float)ti / (float)(MycRom.noColors - 1)); 
     }
 }
+
+
+
 
 void FullGrayConvert(void)
 {
@@ -3478,6 +3772,7 @@ void FullGrayConvert(void)
     {
         int posmaxfr = ti * tmaxw * tmaxh;
         int posminfr = ti * tminw * tminh;
+        
         for (int tj = 0; tj < tmaxh; tj++)
         {
             for (int tk = 0; tk < tmaxw; tk++)
@@ -3486,26 +3781,31 @@ void FullGrayConvert(void)
                 int posminpix = posminfr + (tj / 2) * tminw + (tk / 2);
                 if (tj % 2 == 0 && tk % 2 == 0)
                 {
+                    
                     if (ti < (int)MycRom.nFrames) tfr32[posminpix] = rgb565togray565(tfr32[posminpix]);
                     if (ti < (int)MycRom.nBackgrounds) tbg32[posminpix] = rgb565togray565(tbg32[posminpix]);
                 }
+                
                 if (ti < (int)MycRom.nFrames) tfr64[posmaxpix] = rgb565togray565(tfr64[posmaxpix]);
                 if (ti < (int)MycRom.nBackgrounds) tbg64[posmaxpix] = rgb565togray565(tbg64[posmaxpix]);
             }
         }
         if (ti < (int)MycRom.nFrames)
         {
+            
             for (int tj = 0; tj < MAX_DYNA_SETS_PER_FRAMEN * (int)MycRom.noColors; tj++)
             {
                 MycRom.Dyna4Cols[ti * MAX_DYNA_SETS_PER_FRAMEN * MycRom.noColors + tj] = rgb565togray565(MycRom.Dyna4Cols[ti * MAX_DYNA_SETS_PER_FRAMEN * MycRom.noColors + tj]);
                 MycRom.Dyna4ColsX[ti * MAX_DYNA_SETS_PER_FRAMEN * MycRom.noColors + tj] = rgb565togray565(MycRom.Dyna4ColsX[ti * MAX_DYNA_SETS_PER_FRAMEN * MycRom.noColors + tj]);
             }
+            
             for (int tj = 2; tj < MAX_COLOR_ROTATIONN * MAX_LENGTH_COLOR_ROTATION; tj++)
             {
                 MycRom.ColorRotations[ti * MAX_COLOR_ROTATIONN * MAX_LENGTH_COLOR_ROTATION + tj] = rgb565togray565(MycRom.ColorRotations[ti * MAX_COLOR_ROTATIONN * MAX_LENGTH_COLOR_ROTATION + tj]);
                 MycRom.ColorRotationsX[ti * MAX_COLOR_ROTATIONN * MAX_LENGTH_COLOR_ROTATION + tj] = rgb565togray565(MycRom.ColorRotationsX[ti * MAX_COLOR_ROTATIONN * MAX_LENGTH_COLOR_ROTATION + tj]);
             }
         }
+        
         if (ti < (int)MycRom.nSprites)
         {
             for (int tj = 0; tj < MAX_SPRITE_WIDTH * MAX_SPRITE_HEIGHT; tj++)
@@ -3548,6 +3848,10 @@ UINT16 Brightness(UINT16 color, float coef)
     }
     return (UINT16)(((UINT16)Rout << 11) + ((UINT16)Gout << 5) + (UINT16)Bout);
 }
+
+
+
+
 void ApplyBrightness(float coef)
 {
     UINT fw, fh;
@@ -3582,7 +3886,12 @@ void ApplyBrightness(float coef)
 
 #pragma region Editor_Tools
 
-UINT nSameFramesPerMask[2 * (MAX_MASKS + 1)] = { 0 };
+UINT nSameFramesPerMask[2 * (MAX_MASKS + 1)] = { 0 }; 
+
+
+
+
+
 
 void Check_SameFrames_Masks(BOOL shapemode)
 {
@@ -3595,7 +3904,7 @@ void Check_SameFrames_Masks(BOOL shapemode)
 
 void Check_SameFrames_Masks_All(void)
 {
-    //BestMask = 0;
+    
     Check_SameFrames_Masks(FALSE);
     Check_SameFrames_Masks(TRUE);
     /*for (UINT ti = 0; ti < MycRom.nCompMasks; ti++)
@@ -3608,8 +3917,12 @@ void Check_SameFrames_Masks_All(void)
     else if (BestMask == 0) strcpy_s(tbuf, 256, "Best No mask (S)");
     else if (BestMask >= MAX_MASKS + 1) sprintf_s(tbuf, 256, "Best Mask #%i (S)");
     else sprintf_s(tbuf, 256, "Best Mask #%i");
-    SetDlgItemTextA(hwTB, IDC_LISTSAMEFR, tbuf);*/
+    SetDlgItemTextA(hwTB, IDC_LISTSAMEFR, tbuf);
+    */
 }
+
+
+
 
 void Check_Commons()
 {
@@ -3631,8 +3944,13 @@ void Check_Commons()
     }
 }
 
+
+
+
+
 void Delete_Frame(UINT32 nofr)
 {
+    
     if (nofr < MycRom.nFrames - 1)
     {
         int nfrdecal = MycRom.nFrames - nofr - 1;
@@ -3721,6 +4039,10 @@ void Delete_Frame(UINT32 nofr)
     UpdateFSneeded = true;
 }
 
+
+
+
+
 DWORD lastrotTime[MAX_COLOR_ROTATIONN];
 UINT8 acrotShift[MAX_COLOR_ROTATIONN];
 
@@ -3737,7 +4059,7 @@ void InitColorRotation(void)
     InitColorRotation2();
 }
 
-UINT16 RotationsInBG[256 * 64][2];
+UINT16 RotationsInBG[256 * 64][2]; 
 DWORD lastrotTimeBG[MAX_COLOR_ROTATIONN];
 UINT8 acrotShiftBG[MAX_COLOR_ROTATIONN];
 
@@ -3783,7 +4105,7 @@ void CheckSameFrames(void)
                     break;
                 }
             }
-            else
+            else 
             {
                 if (((pfrm[ti] == 0) && (pfrm2[ti] > 0)) || ((pfrm[ti] > 0) && (pfrm2[ti] == 0)))
                 {
@@ -3833,7 +4155,7 @@ UINT CheckSameFrames(UINT8 nomsk, BOOL shapemode)
                     break;
                 }
             }
-            else
+            else 
             {
                 if (((pfrm[ti] == 0) && (pfrm2[ti] > 0)) || ((pfrm[ti] > 0) && (pfrm2[ti] == 0)))
                 {
@@ -3889,6 +4211,7 @@ void Add_Surface_To_Copy(UINT8* Surface, bool isDel)
         if (Surface[ti] > 0)
         {
             if (!isDel) Copy_Mask[ti] = 1; else Copy_Mask[ti] = 0;
+            
         }
         Copy_ColN[ti] = pcpyc[ti];
         Copy_Dyna[ti] = pdynm[ti];
@@ -3897,6 +4220,11 @@ void Add_Surface_To_Copy(UINT8* Surface, bool isDel)
         Copy_Colo[ti] = MycRP.oFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ti];
     GetSelectionSize();
 }
+
+
+
+
+
 
 void Add_Surface_To_Dyna(UINT8* Surface, bool isDel)
 {
@@ -3953,6 +4281,9 @@ void Add_Surface_To_Dyna(UINT8* Surface, bool isDel)
         }
     }
 }
+
+
+
 void FreeCopyMasks(void)
 {
     Copy_Content = 0;
@@ -3981,6 +4312,9 @@ void Deactivate_Draw_All_Sel(void)
     isMaskAllSel = false;
     SendMessage(hwTB, TB_CHECKBUTTON, BM_DRAWALL, MAKELONG(0, 0));
 }
+
+
+
 
 void InitVariables(void)
 {
@@ -4017,6 +4351,9 @@ void InitVariables(void)
     RedoAvailableN = 0;
 }
 
+
+
+
 void UpdateNewacFrame(void)
 {
     if (MycRom.name[0] == 0) return;
@@ -4045,6 +4382,10 @@ void UpdateNewacFrame(void)
     UpdateFrameBG();
 }
 
+
+
+
+
 int isFrameSelected(UINT noFr)
 {
     for (unsigned int ti = 0; ti < nSelFrames; ti++)
@@ -4053,6 +4394,10 @@ int isFrameSelected(UINT noFr)
     }
     return -1;
 }
+
+
+
+
 int isSpriteSelected(UINT nospr)
 {
     if (acSprite == nospr && nSelSprites > 0) return -2;
@@ -4062,7 +4407,11 @@ int isSpriteSelected(UINT nospr)
     }
     return -1;
 }
-int isFrameSelected3(UINT noFr)
+
+
+
+
+int isFrameSelected3(UINT noFr)   
 {
     if ((acFrame == noFr) && (nSelFrames > 0)) return -2;
     for (unsigned int ti = 0; ti < nSelFrames; ti++)
@@ -4072,7 +4421,11 @@ int isFrameSelected3(UINT noFr)
     return -1;
 }
 
-bool isFrameSelected2(UINT noFr)
+
+
+
+
+bool isFrameSelected2(UINT noFr)   
 {
     for (unsigned int ti = 0; ti < nSelFrames; ti++)
     {
@@ -4081,8 +4434,35 @@ bool isFrameSelected2(UINT noFr)
     return false;
 }
 
+/*HBITMAP ResizeBitmap(HBITMAP hBitmap, int width, int height) {
+    
+    BITMAP bm;
+    GetObject(hBitmap, sizeof(bm), &bm);
+
+    
+    HBITMAP hNewBitmap = CreateCompatibleBitmap(NULL, width, height);
+
+    
+    HDC hdc = CreateCompatibleDC(NULL);
+    SelectObject(hdc, hNewBitmap);
+
+    
+    StretchBlt(hdc, 0, 0, width, height,
+        GetDC(NULL), 0, 0, bm.bmWidth, bm.bmHeight, SRCCOPY);
+
+    
+    DeleteDC(hdc);
+    DeleteObject(hBitmap);
+
+    return hNewBitmap;
+}
+*/
+
 HBITMAP hMultiBitmapF = NULL, hMultiBitmapS = NULL;
-void SetMultiWarningF(void)
+
+
+
+void SetMultiWarningF()
 {
     if (hMultiBitmapF) DeleteObject(hMultiBitmapF);
     char path[MAX_PATH];
@@ -4093,6 +4473,9 @@ void SetMultiWarningF(void)
     hMultiBitmapF = (HBITMAP)LoadImageA(NULL, path, IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
     SendMessageW(GetDlgItem(hwTB, IDC_MULTIF), BM_SETIMAGE, IMAGE_BITMAP, (LPARAM)hMultiBitmapF);
 }
+
+
+
 void SetMultiWarningS()
 {
     if (hMultiBitmapS) DeleteObject(hMultiBitmapS);
@@ -4104,6 +4487,11 @@ void SetMultiWarningS()
     hMultiBitmapS = (HBITMAP)LoadImageA(NULL, path, IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
     SendMessageW(GetDlgItem(hwTB2, IDC_MULTIF), BM_SETIMAGE, IMAGE_BITMAP, (LPARAM)hMultiBitmapS);
 }
+
+
+
+
+
 UINT8 ValuePlus2x2(UINT8* pbuf, UINT lineW)
 {
     if (*pbuf == pbuf[1] || *pbuf == pbuf[lineW] || *pbuf == pbuf[lineW + 1]) return *pbuf;
@@ -4111,6 +4499,10 @@ UINT8 ValuePlus2x2(UINT8* pbuf, UINT lineW)
     else if (pbuf[lineW] == pbuf[lineW + 1]) return pbuf[lineW];
     return *pbuf;
 }
+
+
+
+
 
 void Add_Selection_Frame(UINT nofr)
 {
@@ -4128,8 +4520,13 @@ void Add_Selection_Frame(UINT nofr)
     SetMultiWarningF();
 }
 
+
+
+
+
 void Del_Selection_Frame(UINT nofr)
 {
+    
     int possel = isFrameSelected(nofr);
     if (possel == -1) return;
     if (possel < (int)nSelFrames - 1)
@@ -4139,6 +4536,10 @@ void Del_Selection_Frame(UINT nofr)
     nSelFrames--;
     SetMultiWarningF();
 }
+
+
+
+
 
 void Del_Selection_Sprite(UINT nospr)
 {
@@ -4151,6 +4552,10 @@ void Del_Selection_Sprite(UINT nospr)
     nSelSprites--;
 }
 
+
+
+
+
 int isSameFrame(UINT noFr)
 {
     for (int ti = 0; ti < nSameFrames; ti++)
@@ -4160,8 +4565,13 @@ int isSameFrame(UINT noFr)
     return -1;
 }
 
+
+
+
+
 void Del_Same_Frame(UINT nofr)
 {
+    
     int possame = isSameFrame(nofr);
     if (possame == -1) return;
     if (possame < (int)nSameFrames - 1)
@@ -4171,6 +4581,10 @@ void Del_Same_Frame(UINT nofr)
     nSameFrames--;
 }
 
+
+
+
+
 int is_Section_First(UINT nofr)
 {
     for (UINT ti = 0; ti < MycRP.nSections; ti++)
@@ -4179,6 +4593,10 @@ int is_Section_First(UINT nofr)
     }
     return -1;
 }
+
+
+
+
 
 int Which_Section(UINT nofr)
 {
@@ -4193,6 +4611,10 @@ int Which_Section(UINT nofr)
     }
     return tres;
 }
+
+
+
+
 
 void Delete_Section(int nosec)
 {
@@ -4225,8 +4647,10 @@ void Delete_Sprite(int nospr)
     /*for (UINT32 ti = 0; ti < nSelSprites; ti++)
     {
         if ((int)SelSprites[ti] > nospr) SelSprites[ti]--;
-    }*/
+    }
+    */
     Del_Selection_Sprite(nospr);
+    
     for (UINT ti = 0; ti < MycRom.nFrames; ti++)
     {
         for (UINT tj = 0; tj < MAX_SPRITES_PER_FRAME; tj++)
@@ -4261,17 +4685,26 @@ void Delete_Sprite(int nospr)
     MycRom.SpriteDetDwordPos = (UINT16*)realloc(MycRom.SpriteDetDwordPos, sizeof(UINT16) * MycRom.nSprites * MAX_SPRITE_DETECT_AREAS);
     MycRom.SpriteDetDwords = (UINT32*)realloc(MycRom.SpriteDetDwords, sizeof(UINT32) * MycRom.nSprites * MAX_SPRITE_DETECT_AREAS);
     MycRom.SpriteDetAreas = (UINT16*)realloc(MycRom.SpriteDetAreas, sizeof(UINT16) * 4 * MycRom.nSprites * MAX_SPRITE_DETECT_AREAS);
+    UpdateSpriteList3();
 }
+
+
+
+
 
 int Duplicate_Section_Name(char* name)
 {
-    if (strcmp(name, "- None -") == 0) return 30000;
+    if (strcmp(name, "- None -") == 0) return 30000; 
     for (UINT ti = 0; ti < MycRP.nSections; ti++)
     {
         if (strcmp(name, &MycRP.Section_Names[ti * SIZE_SECTION_NAMES]) == 0) return ti;
     }
     return -1;
 }
+
+
+
+
 
 int Duplicate_Sprite_Name(char* name)
 {
@@ -4282,11 +4715,23 @@ int Duplicate_Sprite_Name(char* name)
     return -1;
 }
 
+
+
+
+
 void Del_Section_Frame(UINT nofr)
 {
     int tsec = is_Section_First(nofr);
+    
     if ((tsec > -1) && (is_Section_First(nofr + 1) > -1)) Delete_Section(tsec);
 }
+
+
+
+
+
+
+
 
 void Get_Mask_Pos(UINT x, UINT y, UINT* poffset, UINT8* pMask)
 {
@@ -4346,6 +4791,7 @@ void Display_Avancement(float avanct, int step, int nsteps)
 
 void Draw_Raw_Digit(UINT8 digit, UINT x, UINT y, UINT8* pbuf, UINT width, UINT height)
 {
+    
     UINT8* pdig = &Raw_Digit_Def[digit * RAW_DIGIT_W];
     UINT8* pdig2;
     const UINT dwid = 11 * RAW_DIGIT_W;
@@ -4374,6 +4820,7 @@ void Draw_Raw_Digit(UINT8 digit, UINT x, UINT y, UINT8* pbuf, UINT width, UINT h
 
 void Draw_Raw_Number(UINT number, UINT x, UINT y, UINT8* pbuf, UINT width, UINT height)
 {
+    
     UINT div = 1000000000;
     bool started = false;
     UINT num = number;
@@ -4394,6 +4841,7 @@ void Draw_Raw_Number(UINT number, UINT x, UINT y, UINT8* pbuf, UINT width, UINT 
 
 void Draw_Digit(UINT8 digit, UINT x, UINT y, float zoom)
 {
+    
     glColor4ubv(draw_color);
     glTexCoord2f(digit / 10.0f, 0);
     glVertex2i(x, y);
@@ -4425,6 +4873,7 @@ void ConvertSurfaceToFrame(UINT8* surface, bool isDel)
         fh = MycRom.fHeight;
         pfr = MycRom.cFrames;
     }
+    
     for (UINT tj = 0; tj < fh; tj++)
     {
         for (UINT ti = 0; ti < fw; ti++)
@@ -4464,6 +4913,11 @@ void ConvertSurfaceToFrame(UINT8* surface, bool isDel)
         }
     }
 }
+
+
+
+
+
 void ConvertSurfaceToDetection(UINT8* surface)
 {
     UINT16 xmin = 0xffff, xmax = 0, ymin = 0xffff, ymax = 0;
@@ -4487,6 +4941,9 @@ void ConvertSurfaceToDetection(UINT8* surface)
     MycRom.SpriteDetAreas[acSprite * 4 * MAX_SPRITE_DETECT_AREAS + acDetSprite * 4 + 2] = xmax;
     MycRom.SpriteDetAreas[acSprite * 4 * MAX_SPRITE_DETECT_AREAS + acDetSprite * 4 + 3] = ymax;
 }
+
+
+
 void ConvertSurfaceToSprite(UINT8* surface)
 {
     UINT16* pspr;
@@ -4506,11 +4963,18 @@ void ConvertSurfaceToSprite(UINT8* surface)
     }
 }
 
+
+
+
+
+
 void ConvertCopyToGradient(int xd, int yd, int xf, int yf)
 {
-    float pscal[256 * 64];
+    float pscal[256 * 64]; 
     /*float psmin = 1000000;
-    float psmax = -1000000;*/
+    float psmax = -1000000;
+    */
+    
     UINT fw, fh;
     UINT16* pfra;
     if (nEditExtraResolutionF)
@@ -4569,6 +5033,11 @@ float distanceellipse(int cx, int cy, int x, int y, float ratio)
     return (float)sqrt(vx * vx + ratio * ratio * vy * vy);
 }
 
+
+
+
+
+
 void ConvertCopyToRadialGradient(int xd, int yd, int xf, int yf)
 {
     UINT fw, fh;
@@ -4586,6 +5055,7 @@ void ConvertCopyToRadialGradient(int xd, int yd, int xf, int yf)
         pfra = MycRom.cFrames;
     }
     float vnorm = distance(xf, yf, xd, yd);
+    if (vnorm == 0) return;
     float range = (float)(max(Draw_Grad_Fin, Draw_Grad_Ini) - min(Draw_Grad_Fin, Draw_Grad_Ini) + 1);
     for (int tj = 0; tj < (int)fh; tj++)
     {
@@ -4637,6 +5107,7 @@ void ConvertCopyToEllipseRadialGradient(int xd, int yd, int xf, int yf)
         pfra = MycRom.cFrames;
     }
     float vnorm = (float)abs(xf - xd);
+    if (vnorm == 0 || (yf - yd) == 0) return;
     float ratio = vnorm / (float)abs(yf - yd);
     float range = (float)(max(Draw_Grad_Fin, Draw_Grad_Ini) - min(Draw_Grad_Fin, Draw_Grad_Ini) + 1);
     for (int tj = 0; tj < (int)fh; tj++)
@@ -4671,39 +5142,66 @@ void ConvertCopyToEllipseRadialGradient(int xd, int yd, int xf, int yf)
         }
     }
 }
+
+
+
+
+
 void rgb565_to_rgb888(uint16_t rgb565, uint8_t* r, uint8_t* g, uint8_t* b)
 {
-    *r = ((rgb565 >> 8) & 0xF8) | ((rgb565 >> 13) & 0x07);
-    *g = ((rgb565 >> 3) & 0xFC) | ((rgb565 >> 9) & 0x03);
-    *b = ((rgb565 << 3) & 0xF8) | ((rgb565 >> 2) & 0x07);
+    *r = ((rgb565 >> 8) & 0xF8) | ((rgb565 >> 13) & 0x07); 
+    *g = ((rgb565 >> 3) & 0xFC) | ((rgb565 >> 9) & 0x03); 
+    *b = ((rgb565 << 3) & 0xF8) | ((rgb565 >> 2) & 0x07); 
 }
+
+
+
+
+
 void rgb565_to_rgb888(uint16_t rgb565, uint8_t* rgb888)
 {
-    rgb888[0] = ((rgb565 >> 8) & 0xF8) | ((rgb565 >> 13) & 0x07);
-    rgb888[1] = ((rgb565 >> 3) & 0xFC) | ((rgb565 >> 9) & 0x03);
-    rgb888[2] = ((rgb565 << 3) & 0xF8) | ((rgb565 >> 2) & 0x07);
+    rgb888[0] = ((rgb565 >> 8) & 0xF8) | ((rgb565 >> 13) & 0x07); 
+    rgb888[1] = ((rgb565 >> 3) & 0xFC) | ((rgb565 >> 9) & 0x03); 
+    rgb888[2] = ((rgb565 << 3) & 0xF8) | ((rgb565 >> 2) & 0x07); 
 }
+
+
+
+
+
 COLORREF RGB565_to_RGB888(UINT16 rgb565) 
 {
-    uint8_t r8 = ((rgb565 >> 8) & 0xF8) | ((rgb565 >> 13) & 0x07);
-    uint8_t g8 = ((rgb565 >> 3) & 0xFC) | ((rgb565 >> 9) & 0x03);
-    uint8_t b8 = ((rgb565 << 3) & 0xF8) | ((rgb565 >> 2) & 0x07);
+    uint8_t r8 = ((rgb565 >> 8) & 0xF8) | ((rgb565 >> 13) & 0x07); 
+    uint8_t g8 = ((rgb565 >> 3) & 0xFC) | ((rgb565 >> 9) & 0x03); 
+    uint8_t b8 = ((rgb565 << 3) & 0xF8) | ((rgb565 >> 2) & 0x07); 
+    
     COLORREF rgb888 = (b8 << 16) | (g8 << 8) | r8;
     return rgb888;
 }
+
+
+
 uint16_t rgb888_to_rgb565(uint8_t r, uint8_t g, uint8_t b)
 {
+    
     uint8_t r5 = r >> 3;
     uint8_t g6 = g >> 2;
     uint8_t b5 = b >> 3;
 
+    
     uint16_t rgb565 = (r5 << 11) | (g6 << 5) | b5;
 
     return rgb565;
 }
 
+
+
+
+
+
 void SetRGB888ColorFromRGB565(UINT8* pDst, UINT16 rgb565)
 {
+    
     uint8_t r5 = (rgb565 >> 11) & 0x1F;
     uint8_t g6 = (rgb565 >> 5) & 0x3F;
     uint8_t b5 = rgb565 & 0x1F;
@@ -4722,6 +5220,14 @@ void EmptyExtraSurface2(void)
     memset(Draw_Extra_Surface2, 0, MAX_SPRITE_WIDTH * MAX_SPRITE_HEIGHT);
 }
 
+
+
+
+
+
+
+
+
 void putpixel(int x, int y, UINT8* surface, UINT8 color, bool coloronly, UINT16* frame)
 {
     UINT fw, fh;
@@ -4735,8 +5241,9 @@ void putpixel(int x, int y, UINT8* surface, UINT8 color, bool coloronly, UINT16*
         fw = MycRom.fWidth;
         fh = MycRom.fHeight;
     }
+    
     if ((x < 0) || (x >= (int)fw) || (y < 0) || (y >= (int)fh)) return;
-    if (coloronly)
+    if (coloronly) 
     {
         if (frame[y * fw + x] == 0) return;
     }
@@ -4745,6 +5252,7 @@ void putpixel(int x, int y, UINT8* surface, UINT8 color, bool coloronly, UINT16*
 
 void putpixel2(int x, int y, UINT8* surface, UINT8 color)
 {
+    
     if ((x < 0) || (x >= (int)MAX_SPRITE_WIDTH) || (y < 0) || (y >= (int)MAX_SPRITE_HEIGHT)) return;
     surface[y * MAX_SPRITE_WIDTH + x] = color;
 }
@@ -4914,25 +5422,27 @@ void drawellipse(int xc, int yc, int rx, int ry, UINT8* surface, UINT8 color, BO
         x = 0;
         y = (float)ry;
 
+        
         d1 = (ry * ry)
             - (rx * rx * ry)
             + (0.25f * rx * rx);
         dx = 2 * ry * ry * x;
         dy = 2 * rx * rx * y;
 
-        while (dx < dy)
-        {
+        
+        while (dx < dy) {
 
+            
             if (!filled) drawAllQuadrants(xc, yc, (int)x, (int)y, surface, color, coloronly, frame); else drawAllQuadrantsF(xc, yc, (int)x, (int)y, surface, color, coloronly, frame);
 
-            if (d1 < 0)
-            {
+            
+            
+            if (d1 < 0) {
                 x++;
                 dx = dx + (2 * ry * ry);
                 d1 = d1 + dx + (ry * ry);
             }
-            else
-            {
+            else {
                 x++;
                 y--;
                 dx = dx + (2 * ry * ry);
@@ -4941,17 +5451,20 @@ void drawellipse(int xc, int yc, int rx, int ry, UINT8* surface, UINT8 color, BO
             }
         }
 
+        
         d2 = ((ry * ry) * ((x + 0.5f) * (x + 0.5f)))
             + ((rx * rx) * ((y - 1) * (y - 1)))
             - (rx * rx * ry * ry);
 
-        while (y >= 0)
-        {
+        
+        while (y >= 0) {
 
+            
             if (!filled) drawAllQuadrants(xc, yc, (int)x, (int)y, surface, color, coloronly, frame); else drawAllQuadrantsF(xc, yc, (int)x, (int)y, surface, color, coloronly, frame);
 
-            if (d2 > 0)
-            {
+            
+            
+            if (d2 > 0) {
                 y--;
                 dy = dy - (2 * rx * rx);
                 d2 = d2 + (rx * rx) - dy;
@@ -4968,6 +5481,7 @@ void drawellipse(int xc, int yc, int rx, int ry, UINT8* surface, UINT8 color, BO
 
 void drawcircle(int xc, int yc, int r, UINT8* surface, UINT8 color, BOOL filled, bool coloronly, UINT16* frame)
 {
+    
     int x = 0, y = r;
     int d = 3 - 2 * r;
     if (!filled) drawAllOctants(xc, yc, x, y, surface, color, coloronly, frame); else drawAllOctantsF(xc, yc, x, y, surface, color, coloronly, frame);
@@ -4987,6 +5501,7 @@ void drawcircle(int xc, int yc, int r, UINT8* surface, UINT8 color, BOOL filled,
 
 void drawcircle2(int xc, int yc, int r, UINT8* surface, UINT8 color, BOOL filled)
 {
+    
     int x = 0, y = r;
     int d = 3 - 2 * r;
     if (!filled) drawAllOctants2(xc, yc, x, y, surface, color); else drawAllOctantsF2(xc, yc, x, y, surface, color);
@@ -5031,7 +5546,7 @@ void drawrectangle(int xd, int yd, int xf, int yf, UINT8* surface, UINT8 color, 
         for (int ti = min(y, y2); ti <= max(y, y2); ti++)
         {
             if ((tj != x) && (tj != x2) && (ti != y) && (ti != y2) && (!isfilled)) continue;
-            if (coloronly)
+            if (coloronly) 
             {
                 if (frame[ti * fw + tj] == 0) continue;
             }
@@ -5042,6 +5557,7 @@ void drawrectangle(int xd, int yd, int xf, int yf, UINT8* surface, UINT8 color, 
 
 void drawrectangle2(int xd, int yd, int xf, int yf, UINT8* surface, UINT8 color, BOOL isfilled)
 {
+    
     int x = xd, y = yd, x2 = xf, y2 = yf;
     if (x < 0) x = 0;
     if (x2 < 0) x2 = 0;
@@ -5103,8 +5619,17 @@ void floodfill3(int x, int y, UINT8* surface, UINT16 scolor, UINT8 dcolor)
     floodfill3(x, y - 1, surface, scolor, dcolor);
 }
 
+
+
+
+
+
+
+
 void drawfill(int x, int y, UINT8* surface, UINT8 color)
 {
+    
+    
     UINT fw, fh;
     UINT8* pdyn;
     UINT16* pfra;
@@ -5127,17 +5652,29 @@ void drawfill(int x, int y, UINT8* surface, UINT8 color)
     floodfill(x, y, surface, searchcol, searchdyn, color, fw, fh, pdyn, pfra);
 }
 
+
+
+
+
+
+
+
 void drawfill2(int x, int y, UINT8* surface, UINT8 color)
 {
+    
     UINT8 searchcol = MycRP.oFrames[acFrame * MycRom.fWidth * MycRom.fHeight + y * MycRom.fWidth + x];
     floodfill2(x, y, surface, searchcol, color);
 }
+
+
+
 
 void drawfill3(int x, int y, UINT8* surface, UINT8 color)
 {
     UINT16* pspr;
     if (nEditExtraResolutionS) pspr = &MycRom.SpriteColoredX[acSprite * MAX_SPRITE_WIDTH * MAX_SPRITE_HEIGHT];
     else pspr = &MycRom.SpriteColored[acSprite * MAX_SPRITE_WIDTH * MAX_SPRITE_HEIGHT];
+    
     if (MycRom.SpriteOriginal[acSprite * MAX_SPRITE_WIDTH * MAX_SPRITE_HEIGHT + y * MAX_SPRITE_WIDTH + x] == 255) return;
     UINT16 searchcol = pspr[y * MAX_SPRITE_WIDTH + x];
     floodfill3(x, y, surface, searchcol, color);
@@ -5151,6 +5688,7 @@ void Draw_Line(float x0, float y0, float x1, float y1)
 
 void Draw_Over_From_Surface(UINT8* Surface, UINT8 val, float zoom, int ofx,int ofy, bool checkfalse, bool invert)
 {
+    
     glEnable(GL_BLEND);
     glDisable(GL_TEXTURE_2D);
     glBegin(GL_LINES);
@@ -5198,6 +5736,7 @@ void Draw_Over_From_Surface(UINT8* Surface, UINT8 val, float zoom, int ofx,int o
 
 void Draw_Over_From_Rectangle(UINT16* Recta, float zoom, int ofx, int ofy)
 {
+    
     glEnable(GL_BLEND);
     glDisable(GL_TEXTURE_2D);
     glBegin(GL_LINES);
@@ -5224,6 +5763,7 @@ void Draw_Over_From_Rectangle(UINT16* Recta, float zoom, int ofx, int ofy)
 
 void Draw_Over_From_Surface2(UINT8* Surface, UINT8 val, float zoom, int ofx, int ofy, bool checkfalse, bool invert)
 {
+    
     glDisable(GL_BLEND);
     glDisable(GL_TEXTURE_2D);
     glBegin(GL_LINES);
@@ -5287,7 +5827,7 @@ void Draw_Paste_Over(GLFWwindow* glfwin,UINT x,UINT y,float zoom)
             if (Paste_Mirror & 1) i = Paste_Width - 1 - i;
             if (Paste_Mirror & 2) j = Paste_Height - 1 - j;
             if (Paste_Mask[i + j * Paste_Width] == 0) continue;
-            //if ((ti + ofx< 0) || (ti + ofx >= (int)fw) || (tj + ofy < 0) || (tj + ofy >= (int)fh)) continue;
+            
             int cff = Copy_From_Frame;
             if (cff == -1) cff = acFrame;
             SetRenderDrawColor565(Paste_ColN[i + j * Paste_Width], mselcol);
@@ -5303,6 +5843,7 @@ void Draw_Paste_Over(GLFWwindow* glfwin,UINT x,UINT y,float zoom)
 
 void Draw_Number(UINT number, UINT x, UINT y, float zoom)
 {
+    
     UINT div = 1000000000;
     bool started = false;
     UINT num=number;
@@ -5330,6 +5871,7 @@ void Draw_Number(UINT number, UINT x, UINT y, float zoom)
 
 void SetViewport(GLFWwindow* glfwin)
 {
+    
     int Resx, Resy;
     glfwMakeContextCurrent(glfwin);
     glfwGetFramebufferSize(glfwin, &Resx, &Resy);
@@ -5343,19 +5885,20 @@ void SetViewport(GLFWwindow* glfwin)
 
 void Calc_Resize_Frame(void)
 {
+    
     glfwMakeContextCurrent(glfwframe);
     RECT winrect;
     GetClientRect(hWnd, &winrect);
     ScrW = winrect.right;
     ScrH = winrect.bottom;
-    NFrameToDraw = (int)((float)(ScrW - FRAME_STRIP_W_MARGIN) / (float)(256 + FRAME_STRIP_W_MARGIN)); // Calculate the number of frames to display in the strip
-    FS_LMargin = (ScrW - (NFrameToDraw * (FRAME_STRIP_W_MARGIN + 256) + FRAME_STRIP_W_MARGIN)) / 2; // calculate the left and right margin in the strip
+    NFrameToDraw = (int)((float)(ScrW - FRAME_STRIP_W_MARGIN) / (float)(256 + FRAME_STRIP_W_MARGIN)); 
+    FS_LMargin = (ScrW - (NFrameToDraw * (FRAME_STRIP_W_MARGIN + 256) + FRAME_STRIP_W_MARGIN)) / 2; 
     if (MycRom.name[0])
     {
         if (MycRom.fWidth == 192)
         {
-            NFrameToDraw = (int)((float)(ScrW - FRAME_STRIP_W_MARGIN) / (float)(192 + FRAME_STRIP_W_MARGIN)); // Calculate the number of frames to display in the strip
-            FS_LMargin = (ScrW - (NFrameToDraw * (FRAME_STRIP_W_MARGIN + 192) + FRAME_STRIP_W_MARGIN)) / 2; // calculate the left and right margin in the strip
+            NFrameToDraw = (int)((float)(ScrW - FRAME_STRIP_W_MARGIN) / (float)(192 + FRAME_STRIP_W_MARGIN)); 
+            FS_LMargin = (ScrW - (NFrameToDraw * (FRAME_STRIP_W_MARGIN + 192) + FRAME_STRIP_W_MARGIN)) / 2; 
         }
     }
     int thei = winrect.bottom - (TOOLBAR_HEIGHT + 20) - FRAME_STRIP_HEIGHT - statusBarHeight - 20;
@@ -5368,7 +5911,7 @@ void Calc_Resize_Frame(void)
     if (((float)twid / (float)thei) > mul) twid = thei * mul; else
     {
         thei = twid / mul;
-        twid = thei * mul;
+        twid = thei * mul; 
     }
     if (MycRom.name[0])
     {
@@ -5383,14 +5926,14 @@ void Calc_Resize_Frame(void)
             fh = MycRom.fHeight;
             fw = MycRom.fWidth;
         }
-        frame_zoom = ((float)thei / (float)fh);
+        frame_zoom = ((float)thei / (float)fh); 
         twid = (UINT)(frame_zoom * fw);
         thei = (UINT)(frame_zoom * fh);
     }
     else
     {
-        frame_zoom = ((float)thei / (float)32);
-        twid = (UINT)(frame_zoom * 128);
+        frame_zoom = ((float)thei / (float)32); 
+        twid = (UINT)(frame_zoom * 128); 
         thei = (UINT)(frame_zoom * 32);
     }
     glfwSetWindowSize(glfwframe, twid, thei);
@@ -5408,22 +5951,23 @@ void Calc_Resize_Frame(void)
 
 void Calc_Resize_Sprite(void)
 {
+    
     glfwMakeContextCurrent(glfwsprites);
     RECT winrect;
     GetClientRect(hSprites, &winrect);
     ScrW2 = winrect.right;
     ScrH2 = winrect.bottom;
-    NSpriteToDraw = (int)((float)(ScrW2 - FRAME_STRIP_W_MARGIN) / (float)(MAX_SPRITE_WIDTH + FRAME_STRIP_W_MARGIN)); // Calculate the number of frames to display in the strip
-    SS_LMargin = (ScrW2 - (NSpriteToDraw * (FRAME_STRIP_W_MARGIN + MAX_SPRITE_WIDTH) + FRAME_STRIP_W_MARGIN)) / 2; // calculate the left and right margin in the strip
+    NSpriteToDraw = (int)((float)(ScrW2 - FRAME_STRIP_W_MARGIN) / (float)(MAX_SPRITE_WIDTH + FRAME_STRIP_W_MARGIN)); 
+    SS_LMargin = (ScrW2 - (NSpriteToDraw * (FRAME_STRIP_W_MARGIN + MAX_SPRITE_WIDTH) + FRAME_STRIP_W_MARGIN)) / 2; 
     int thei = winrect.bottom - (TOOLBAR_HEIGHT + 20) - FRAME_STRIP_HEIGHT2 - statusBarHeight - 20;
     int twid = winrect.right;
     float mul = 4;
     if (((float)twid / (float)thei) > mul) twid = (int)(thei * mul); else
     {
         thei = (int)(twid / mul);
-        twid = (int)(thei * mul);
+        twid = (int)(thei * mul); 
     }
-    sprite_zoom = ((float)thei / (float)MAX_SPRITE_HEIGHT);
+    sprite_zoom = ((float)thei / (float)MAX_SPRITE_HEIGHT); 
     twid = (int)(sprite_zoom * MAX_SPRITE_WIDTH);
     thei = (int)(sprite_zoom * MAX_SPRITE_HEIGHT);
     glfwSetWindowSize(glfwsprites, twid, thei);
@@ -5441,6 +5985,7 @@ void Calc_Resize_Sprite(void)
 
 void Calc_Resize_Image(void)
 {
+    
     glfwMakeContextCurrent(glfwimages);
     RECT winrect;
     GetClientRect(hImages, &winrect);
@@ -5456,12 +6001,14 @@ unsigned char RGBMask[3] = { 255,255,255 };
 
 void MaskCommonPoints(UINT8* surface)
 {
-    memset(surface, 1, MycRom.fWidth * MycRom.fHeight);
+    
+    memset(surface, 1, MycRom.fWidth * MycRom.fHeight); 
     if (nSelFrames < 2) return;
     for (UINT tj = 0; tj < MycRom.fWidth * MycRom.fHeight; tj++)
     {
         for (UINT ti = 1; ti < nSelFrames; ti++)
         {
+            
             if (MycRP.oFrames[SelFrames[0] * MycRom.fWidth * MycRom.fHeight + tj] != MycRP.oFrames[SelFrames[ti] * MycRom.fWidth * MycRom.fHeight + tj])
             {
                 surface[tj] = 0;
@@ -5473,7 +6020,9 @@ void MaskCommonPoints(UINT8* surface)
 
 void RenderDrawPointClip(GLFWwindow* glfwin, float x, float y, unsigned int xmax, unsigned int ymax, float zoom)
 {
+    
     if ((x > xmax) || (y > ymax)) return;
+    
     if ((x + (int)zoom - 1 <= xmax) && (y + (int)zoom - 1 <= ymax))
     {
         glColor4ubv(draw_color);
@@ -5491,6 +6040,8 @@ void RenderDrawPointClip(GLFWwindow* glfwin, float x, float y, unsigned int xmax
         glVertex2f(x + zoom - 1, y + zoom - 1);
         return;
     }
+    
+    
     float tx = x + zoom - 1;
     float ty = y + zoom - 1;
     float ttx = 1, tty = 1;
@@ -5536,7 +6087,13 @@ void RenderDrawPoint(GLFWwindow* glfwin, float x, float y, float zoom)
     glVertex2f(x + zoom - 1, y + zoom - 1);
 }
 
-UINT16 RotationsInFrame[256 * 64][2];
+UINT16 RotationsInFrame[256 * 64][2]; 
+
+
+
+
+
+
 bool isColorInRotation(UINT16 nocol, UINT nofr, bool isextra, UINT8* pnorot, UINT16* pnorotcol)
 {
     UINT16* prot;
@@ -5548,7 +6105,7 @@ bool isColorInRotation(UINT16 nocol, UINT nofr, bool isextra, UINT8* pnorot, UIN
         if (isextra) prot = &MycRom.ColorRotationsX[(nofr * MAX_COLOR_ROTATIONN + ti) * MAX_LENGTH_COLOR_ROTATION];
         else prot = &MycRom.ColorRotations[(nofr * MAX_COLOR_ROTATIONN + ti) * MAX_LENGTH_COLOR_ROTATION];
         if (*prot == 0) continue;
-        for (UINT16 tj = 2; tj < (*prot) + 2; tj++)
+        for (UINT16 tj = 2; tj < (*prot) + 2; tj++) 
         {
             if (prot[tj] == nocol)
             {
@@ -5560,19 +6117,30 @@ bool isColorInRotation(UINT16 nocol, UINT nofr, bool isextra, UINT8* pnorot, UIN
     }
     return false;
 }
+
+
+
+
+
+
+
 void CheckNewRotation(int x, int y, UINT16 col)
 {
     UINT8 norot;
     UINT16 norotcol;
     UINT fw;
     if (nEditExtraResolutionF) fw = MycRom.fWidthX; else fw = MycRom.fWidth;
-    if (isColorInRotation(col, acFrame, nEditExtraResolutionF, &norot, &norotcol))
+    ;
+    if (isColorInRotation(col, acFrame, nEditExtraResolutionF, &norot, &norotcol)) 
     {
         RotationsInFrame[y * fw + x][0] = (UINT16)norot;
-        RotationsInFrame[y * fw + x][1] = norotcol;
+        RotationsInFrame[y * fw + x][1] = norotcol; 
     }
-    else RotationsInFrame[y * fw + x][0] = 0xffff;
+    else RotationsInFrame[y * fw + x][0] = 0xffff; 
 }
+
+
+
 
 void Predraw_Frame_For_Rotations(unsigned int nofr)
 {
@@ -5595,7 +6163,7 @@ void Predraw_Frame_For_Rotations(unsigned int nofr)
         fw = MycRom.fWidthX;
         fh = MycRom.fHeightX;
         pfr = &MycRom.cFramesX[nofr * fw * fh];
-        if (BGID < MycRom.nBackgrounds && MycRom.isExtraBackground[BGID] > 0)
+        if (BGID < MycRom.nBackgrounds && MycRom.isExtraBackground[BGID] > 0) 
         {
             pBG = &MycRom.BackgroundFramesX[BGID * fw * fh];
             pBGm = &MycRom.BackgroundMaskX[nofr * fw * fh];
@@ -5636,19 +6204,19 @@ void Predraw_Frame_For_Rotations(unsigned int nofr)
             if (pBG != NULL && (MycRP.oFrames[nofr * MycRom.fWidth * MycRom.fHeight + tl * MycRom.fWidth + tk] == 0) &&
                 (pBGm[tj * fw + ti] > 0))
             {
-                //SetRenderDrawColor565(pBG[tj * fw + ti], 255);
+                
                 finalcol = pBG[tj * fw + ti];
                 coltype = 0;
             }
             else
             {
                 UINT8 nodynaset = pDYNs[tj * fw + ti];
-                if (nodynaset == 255) ///SetRenderDrawColor565(pfr[tj * fw + ti], 255);
+                if (nodynaset == 255) 
                 {
                     finalcol = pfr[tj * fw + ti];
                     coltype = 1;
                 }
-                else //SetRenderDrawColor565(pDYNc[nodynaset * MycRom.noColors + MycRP.oFrames[acFrame * MycRom.fWidth * MycRom.fHeight + tl * MycRom.fWidth + tk]], 255);
+                else 
                 {
                     finalcol = pDYNc[nodynaset * MycRom.noColors + MycRP.oFrames[nofr * MycRom.fWidth * MycRom.fHeight + tl * MycRom.fWidth + tk]];
                     coltype = 2;
@@ -5659,9 +6227,9 @@ void Predraw_Frame_For_Rotations(unsigned int nofr)
             if ((coltype != 2) && isColorInRotation(finalcol, nofr, nEditExtraResolutionF, &norot, &norotcol))
             {
                 RotationsInFrame[tj * fw + ti][0] = (UINT16)norot;
-                RotationsInFrame[tj * fw + ti][1] = norotcol;
+                RotationsInFrame[tj * fw + ti][1] = norotcol; 
             }
-            else RotationsInFrame[tj * fw + ti][0] = 0xffff;
+            else RotationsInFrame[tj * fw + ti][0] = 0xffff; 
         }
     }
 }
@@ -5673,6 +6241,15 @@ void CheckAcFrameChanged(void)
     Predraw_Frame_For_Rotations(acFrame);
     Predraw_BG_For_Rotations(acBG);
 }
+
+
+
+
+
+
+
+
+
 void Draw_Frame(GLFWwindow* glfwin, float zoom, unsigned int ofx, unsigned int ofy, unsigned int nofr, unsigned int x, unsigned int y, bool original)
 {
     if (nofr >= MycRom.nFrames)
@@ -5716,7 +6293,7 @@ void Draw_Frame(GLFWwindow* glfwin, float zoom, unsigned int ofx, unsigned int o
         fh = MycRom.fHeightX;
         pFrame = &MycRom.cFramesX[nofr * fw * fh];
         pcolrot = &MycRom.ColorRotationsX[nofr * MAX_COLOR_ROTATIONN * MAX_LENGTH_COLOR_ROTATION];
-        if (BGID < MycRom.nBackgrounds && MycRom.isExtraBackground[BGID] > 0)
+        if (BGID < MycRom.nBackgrounds && MycRom.isExtraBackground[BGID] > 0) 
         {
             pBG = &MycRom.BackgroundFramesX[BGID * fw * fh];
             pBGm = &MycRom.BackgroundMaskX[nofr * fw * fh];
@@ -5739,6 +6316,7 @@ void Draw_Frame(GLFWwindow* glfwin, float zoom, unsigned int ofx, unsigned int o
         pDYNc = &MycRom.Dyna4Cols[nofr * MAX_DYNA_SETS_PER_FRAMEN * MycRom.noColors];
     }
     UINT8* pFrameo = &MycRP.oFrames[nofr * MycRom.fWidth * MycRom.fHeight];
+    
     if (!original)
     {
         DWORD actime = timeGetTime();
@@ -5755,11 +6333,12 @@ void Draw_Frame(GLFWwindow* glfwin, float zoom, unsigned int ofx, unsigned int o
             }
         }
     }
-    for (unsigned int tj = ofy; tj < fh; tj++)
+    
+    for (unsigned int tj = ofy; tj < fh; tj++) 
     {
         for (unsigned int ti = ofx; ti < fw; ti++)
         {
-            if (!original)
+            if (!original) 
             {
                 int tk = ti, tl = tj;
                 if (nEditExtraResolutionF && fh == 64)
@@ -5772,26 +6351,29 @@ void Draw_Frame(GLFWwindow* glfwin, float zoom, unsigned int ofx, unsigned int o
                     tk *= 2;
                     tl *= 2;
                 }
-                UINT16 norot = RotationsInFrame[tj * fw + ti][0];
+                UINT16 norot = RotationsInFrame[tj * fw + ti][0]; 
                 if (norot < 0xffff)
                 {
-                    UINT16 nocolinrot = RotationsInFrame[tj * fw + ti][1];
-                    UINT16 collength = pcolrot[norot * MAX_LENGTH_COLOR_ROTATION];
+                    
+                    UINT16 nocolinrot = RotationsInFrame[tj * fw + ti][1]; 
+                    UINT16 collength = pcolrot[norot * MAX_LENGTH_COLOR_ROTATION]; 
                     SetRenderDrawColor565(pcolrot[norot * MAX_LENGTH_COLOR_ROTATION +
-                        (nocolinrot + acrotShift[norot]) % collength + 2], 255);
+                        (nocolinrot + acrotShift[norot]) % collength + 2], 255); 
                 }
+                
                 else if (pBG != NULL && (MycRP.oFrames[nofr * MycRom.fWidth * MycRom.fHeight + tl * MycRom.fWidth + tk] == 0) &&
                     (pBGm[tj * fw + ti] > 0))
                     SetRenderDrawColor565(pBG[tj * fw + ti], 255);
+                
                 else
                 {
                     UINT8 nodynaset = pDYNs[tj * fw + ti];
-                    if (nodynaset == 255) SetRenderDrawColor565(pFrame[tj * fw + ti], 255);
-                    else
+                    if (nodynaset == 255) SetRenderDrawColor565(pFrame[tj * fw + ti], 255); 
+                    else 
                         SetRenderDrawColor565(pDYNc[nodynaset * MycRom.noColors + MycRP.oFrames[nofr * MycRom.fWidth * MycRom.fHeight + tl * MycRom.fWidth + tk]], 255);
                 }
             }
-            else
+            else 
             {
                 UINT16 tcol = originalcolors[pFrameo[ti + tj * MycRom.fWidth]];
                 if ((Common_Pushed) && (Common_Mask[tj * MycRom.fWidth + ti] == 0))
@@ -5846,7 +6428,7 @@ void Draw_Frame(GLFWwindow* glfwin, float zoom, unsigned int ofx, unsigned int o
                 Draw_Over_From_Rectangle(sprBB, zoom, ofx, ofy);
             }
         }
-        //else
+        
         {
             SetRenderDrawColor(mselcol, 0, mselcol, mselcol);
             Draw_Over_From_Surface(pDYNs, 255, zoom, ofx, ofy, false, true);
@@ -5859,8 +6441,13 @@ void Draw_Frame(GLFWwindow* glfwin, float zoom, unsigned int ofx, unsigned int o
         }
     }
 }
+
+
+
+
 void Draw_Frame_Strip(void)
 {
+    
     float RTexCoord = (float)ScrW / (float)MonWidth;
     glfwMakeContextCurrent(glfwframestrip);
     glDisable(GL_BLEND);
@@ -5883,8 +6470,12 @@ void Draw_Frame_Strip(void)
     glEnd();
 }
 
+
+
+
 void Draw_Sprite_Strip(void)
 {
+    
     float RTexCoord = (float)ScrW2 / (float)MonWidth;
     glfwMakeContextCurrent(glfwspritestrip);
     glDisable(GL_BLEND);
@@ -5907,11 +6498,19 @@ void Draw_Sprite_Strip(void)
     glEnd();
 }
 
+
+
+
 void CalcPosSlider(void)
 {
     float div = (float)MycRom.nFrames / (float)SliderWidth;
     PosSlider = (int)((float)PreFrameInStrip / div);
 }
+
+
+
+
+
 void Get_Frame_Strip_Line_Color(UINT pos)
 {
     UINT corframe = (int)((float)(pos - FRAME_STRIP_SLIDER_MARGIN) * (float)MycRom.nFrames / (float)SliderWidth);
@@ -5961,27 +6560,36 @@ void Get_Frame_Strip_Line_Color(UINT pos)
     }
 }
 
+
+
+
 void Frame_Strip_Update(void)
 {
+    
     if (pFrameStrip) memset(pFrameStrip, 0, MonWidth * FRAME_STRIP_HEIGHT * 4);
+    
     if (MycRom.name[0] == 0) return;
     UINT8* pstrip, * psmem, * psmem2, * pmask, * pfro, * pBGm;
     UINT16* pfr, *pBG, *pdyn;
     const UINT addrow = ScrW * 4;
     pstrip = pFrameStrip + (FS_LMargin + FRAME_STRIP_W_MARGIN) * 4 + FRAME_STRIP_H_MARGIN * addrow;
     UINT8 frFrameColor[3] = { 255,255,255 };
+    
     int fwid = 256;
     if (MycRom.name[0])
     {
         if (MycRom.fWidth == 192) fwid = 192;
     }
+    
     for (int ti = 0; ti < (int)NFrameToDraw; ti++)
     {
+        
         if ((PreFrameInStrip + ti < 0) || (PreFrameInStrip + ti >= (int)MycRom.nFrames))
         {
-            pstrip += (fwid + FRAME_STRIP_W_MARGIN) * 4;
+            pstrip += (fwid + FRAME_STRIP_W_MARGIN) * 4; 
             continue;
         }
+        
         if (PreFrameInStrip + ti == acFrame)
         {
             frFrameColor[0] = acColor[0];
@@ -6000,6 +6608,7 @@ void Frame_Strip_Update(void)
             frFrameColor[1] = UnselColor[1];
             frFrameColor[2] = UnselColor[2];
         }
+        
         for (int tj = -1; tj < fwid + 1; tj++)
         {
             *(pstrip + tj * 4 + 64 * addrow) = *(pstrip - addrow + tj * 4) = frFrameColor[0];
@@ -6014,6 +6623,8 @@ void Frame_Strip_Update(void)
             *(pstrip + tj * addrow + fwid * 4 + 2) = *(pstrip - 4 + tj * addrow + 2) = frFrameColor[2];
             *(pstrip + tj * addrow + fwid * 4 + 3) = *(pstrip - 4 + tj * addrow + 3) = 255;
         }
+        
+        
         pfro = &MycRP.oFrames[(PreFrameInStrip + ti) * MycRom.fWidth * MycRom.fHeight];
         UINT BGID = MycRom.BackgroundID[PreFrameInStrip + ti];
         UINT fw, fh;
@@ -6025,7 +6636,7 @@ void Frame_Strip_Update(void)
             fw = MycRom.fWidthX;
             fh = MycRom.fHeightX;
             pfr = &MycRom.cFramesX[(PreFrameInStrip + ti) * fw * fh];
-            if (BGID < MycRom.nBackgrounds && MycRom.isExtraBackground[BGID] > 0)
+            if (BGID < MycRom.nBackgrounds && MycRom.isExtraBackground[BGID] > 0) 
             {
                 pBG = &MycRom.BackgroundFramesX[BGID * fw * fh];
                 pBGm = &MycRom.BackgroundMaskX[(PreFrameInStrip + ti) * fw * fh];
@@ -6051,7 +6662,7 @@ void Frame_Strip_Update(void)
         bool doublepixsize = true;
         if (fh == 64) doublepixsize = false;
         psmem = pstrip;
-        // let's go
+        
         for (UINT tj = 0; tj < fh; tj++)
         {
             psmem2 = pstrip;
@@ -6068,14 +6679,14 @@ void Frame_Strip_Update(void)
                     tm *= 2;
                     tl *= 2;
                 }
-                if ((Edit_Mode == 1) && (pfro[tl * MycRom.fWidth + tm] == 0) && (pBG != NULL) && (pBGm[tj * fw + tk] > 0)) // display colorized frame from background
+                if ((Edit_Mode == 1) && (pfro[tl * MycRom.fWidth + tm] == 0) && (pBG != NULL) && (pBGm[tj * fw + tk] > 0)) 
                     SetRGB888ColorFromRGB565(pstrip, pBG[tj * fw + tk]);
-                else if ((Edit_Mode == 1) && (pmask[tj * fw + tk] != 255))
+                else if ((Edit_Mode == 1) && (pmask[tj * fw + tk] != 255)) 
                     SetRGB888ColorFromRGB565(pstrip,
                         MycRom.Dyna4Cols[((PreFrameInStrip + ti) * MAX_DYNA_SETS_PER_FRAMEN + pmask[tj * fw + tk]) * MycRom.noColors + pfro[tl * MycRom.fWidth + tm]]);
-                else if (Edit_Mode == 1)
+                else if (Edit_Mode == 1) 
                     SetRGB888ColorFromRGB565(pstrip, pfr[tj * fw + tk]);
-                else
+                else 
                     SetRGB888ColorFromRGB565(pstrip, originalcolors[pfro[tl * MycRom.fWidth + tm]]);
                 pstrip[3] = 255;
                 if (doublepixsize)
@@ -6093,6 +6704,7 @@ void Frame_Strip_Update(void)
         }
         pstrip = psmem + (fwid + FRAME_STRIP_W_MARGIN) * 4;
     }
+    
     int presect = -1, acsect;
     for (UINT ti = 0; ti < NFrameToDraw; ti++)
     {
@@ -6115,6 +6727,7 @@ void Frame_Strip_Update(void)
         }
         presect = acsect;
     }
+    
     for (UINT ti = addrow * (FRAME_STRIP_HEIGHT - FRAME_STRIP_H_MARGIN / 2 - 5); ti < addrow * (FRAME_STRIP_HEIGHT - FRAME_STRIP_H_MARGIN / 2 + 7); ti++)
     {
         pFrameStrip[ti] = 50;
@@ -6138,7 +6751,7 @@ void Frame_Strip_Update(void)
         pFrameStrip[addrow * (FRAME_STRIP_HEIGHT - FRAME_STRIP_H_MARGIN / 2 + 2) + 4 * ti + 1] = under_draw_color[1];
         pFrameStrip[addrow * (FRAME_STRIP_HEIGHT - FRAME_STRIP_H_MARGIN / 2 + 2) + 4 * ti + 2] = under_draw_color[2];
         pFrameStrip[addrow * (FRAME_STRIP_HEIGHT - FRAME_STRIP_H_MARGIN / 2 + 2) + 4 * ti + 3] = 255;
-        //if (isSameFrame(PreFrameInStrip + ti) == -1) SetRenderDrawColor(255, 255, 255, 255); else SetRenderDrawColor(0, 255, 0, 255);
+        
     }
     SliderWidth = ScrW - 2 * FRAME_STRIP_SLIDER_MARGIN;
     CalcPosSlider();
@@ -6157,15 +6770,22 @@ void Frame_Strip_Update(void)
     glfwMakeContextCurrent(glfwframestrip);
     glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, TxFrameStrip[!(acFSText)]);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, ScrW, FRAME_STRIP_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, pFrameStrip);
-    acFSText = !(acFSText);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, ScrW, FRAME_STRIP_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, pFrameStrip); 
+    acFSText = !(acFSText); 
 }
+
+
+
 
 void CalcPosSlider2(void)
 {
     float div = (float)MycRom.nSprites / (float)SliderWidth2;
     PosSlider2 = (int)((float)PreSpriteInStrip / div);
 }
+
+
+
+
 void Get_Sprite_Strip_Line_Color(UINT pos)
 {
     UINT corsprite = (int)((float)(pos - FRAME_STRIP_SLIDER_MARGIN) * (float)MycRom.nSprites / (float)SliderWidth2);
@@ -6198,19 +6818,24 @@ void Get_Sprite_Strip_Line_Color(UINT pos)
         draw_color[2] = UnselColor[2];
     }
 }
+
+
+
 void Sprite_Strip_Update(void)
 {
     glfwMakeContextCurrent(glfwspritestrip);
+    
     if (pSpriteStrip) memset(pSpriteStrip, 0, MonWidth * FRAME_STRIP_HEIGHT2 * 4);
     if (MycRom.name[0] == 0) return;
     if (MycRom.nSprites == 0)
     {
         glEnable(GL_TEXTURE_2D);
         glBindTexture(GL_TEXTURE_2D, TxSpriteStrip[!(acSSText)]);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, ScrW2, FRAME_STRIP_HEIGHT2, GL_RGBA, GL_UNSIGNED_BYTE, pSpriteStrip); //RGBA with 4 bytes alignment for efficiency
-        acSSText = !(acSSText);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, ScrW2, FRAME_STRIP_HEIGHT2, GL_RGBA, GL_UNSIGNED_BYTE, pSpriteStrip); 
+        acSSText = !(acSSText); 
         return;
     }
+    
     UINT8* pspro;
     UINT16* psprc;
     int addrow = ScrW2 * 4;
@@ -6229,11 +6854,13 @@ void Sprite_Strip_Update(void)
             psprc = &MycRom.SpriteColored[(PreSpriteInStrip + ti) * MAX_SPRITE_HEIGHT * MAX_SPRITE_WIDTH];
             pspro = &MycRom.SpriteOriginal[(PreSpriteInStrip + ti) * MAX_SPRITE_HEIGHT * MAX_SPRITE_WIDTH];
         }
+        
         if ((PreSpriteInStrip + ti < 0) || (PreSpriteInStrip + ti >= (int)MycRom.nSprites))
         {
             pstrip += (fwid + FRAME_STRIP_W_MARGIN) * 4;
             continue;
         }
+        
         if (PreSpriteInStrip + ti == acSprite)
         {
             frFrameColor[0] = acColor[0];
@@ -6252,6 +6879,7 @@ void Sprite_Strip_Update(void)
             frFrameColor[1] = UnselColor[1];
             frFrameColor[2] = UnselColor[2];
         }
+        
         for (int tj = -1; tj < fwid + 1; tj++)
         {
             *(pstrip + tj * 4 + MAX_SPRITE_HEIGHT * addrow) = *(pstrip - addrow + tj * 4) = frFrameColor[0];
@@ -6266,11 +6894,12 @@ void Sprite_Strip_Update(void)
             *(pstrip + tj * addrow + fwid * 4 + 2) = *(pstrip - 4 + tj * addrow + 2) = frFrameColor[2];
             *(pstrip + tj * addrow + fwid * 4 + 3) = *(pstrip - 4 + tj * addrow + 3) = 255;
         }
+        
         for (UINT tj = 0; tj < MAX_SPRITE_HEIGHT; tj++)
         {
             for (UINT tk = 0; tk < MAX_SPRITE_WIDTH; tk++)
             {
-                if (pspro[tk + tj * MAX_SPRITE_WIDTH] < 255)
+                if (pspro[tk + tj * MAX_SPRITE_WIDTH] < 255) 
                 {
                     SetRGB888ColorFromRGB565(&pstrip[tj * addrow + tk * 4], psprc[tk + tj * MAX_SPRITE_WIDTH]);
                     pstrip[tj * addrow + tk * 4 + 3] = 255;
@@ -6279,6 +6908,7 @@ void Sprite_Strip_Update(void)
         }
         pstrip += (fwid + FRAME_STRIP_W_MARGIN) * 4;
     }
+    
     for (UINT ti = 0; ti < NSpriteToDraw; ti++)
     {
         SetRenderDrawColor(128, 128, 128, 255);
@@ -6291,6 +6921,7 @@ void Sprite_Strip_Update(void)
             Draw_Raw_Digit(10, BS_LMargin + FRAME_STRIP_W_MARGIN + ti * (fwid + FRAME_STRIP_W_MARGIN), FRAME_STRIP_H_MARGIN - RAW_DIGIT_H - 3, pSpriteStrip, ScrW2, FRAME_STRIP_H_MARGIN);
         }
     }
+    
     for (int ti = addrow * (FRAME_STRIP_HEIGHT - FRAME_STRIP_H_MARGIN / 2 - 5); ti < addrow * (FRAME_STRIP_HEIGHT - FRAME_STRIP_H_MARGIN / 2 + 7); ti++)
     {
         pSpriteStrip[ti] = 50;
@@ -6329,12 +6960,20 @@ void Sprite_Strip_Update(void)
         }
     }
     SetRenderDrawColor(255, 255, 255, 255);
-    //glfwMakeContextCurrent(glfwspritestrip);
+    
     glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, TxSpriteStrip[!(acSSText)]);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, ScrW2, FRAME_STRIP_HEIGHT2, GL_RGBA, GL_UNSIGNED_BYTE, pSpriteStrip); //RGBA with 4 bytes alignment for efficiency
-    acSSText = !(acSSText);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, ScrW2, FRAME_STRIP_HEIGHT2, GL_RGBA, GL_UNSIGNED_BYTE, pSpriteStrip); 
+    acSSText = !(acSSText); 
 }
+
+
+
+
+
+
+
+
 
 void CopyRows(UINT sfr, UINT sfrrow, UINT dfr, UINT dfrrow, UINT nrows)
 {
@@ -6362,6 +7001,14 @@ void CopyRows(UINT sfr, UINT sfrrow, UINT dfr, UINT dfrrow, UINT nrows)
     memcpy_s(&pdfr[dfrrow * fw], nrows * fw * sizeof(UINT16), &psfr[sfrrow * fw], nrows * fw * sizeof(UINT16));
     memcpy_s(&pddyn[dfrrow * fw], nrows * fw, &psdyn[sfrrow * fw], nrows * fw);
 }
+
+
+
+
+
+
+
+
 void CopyCols(UINT sfr, UINT sfrcol, UINT dfr, UINT dfrcol, UINT ncols)
 {
     UINT fw, fh;
@@ -6396,8 +7043,12 @@ void CopyCols(UINT sfr, UINT sfrcol, UINT dfr, UINT dfrcol, UINT ncols)
     }
 }
 
+
+
+
 void AutoFillScrolling(void)
 {
+    
     UINT firstfr = acFrame, lastfr = acFrame;
     bool frfound = true;
     while (frfound)
@@ -6417,6 +7068,7 @@ void AutoFillScrolling(void)
             }
         }
     }
+    
     UINT32 rowCRC32firstfr[64], rowCRC32lastfr[64], rowCRC32acfr[64];
     UINT32 colCRC32firstfr[256], colCRC32lastfr[256], colCRC32acfr[256];
     for (UINT ti = 0; ti < MycRom.fHeight; ti++)
@@ -6429,13 +7081,15 @@ void AutoFillScrolling(void)
         colCRC32firstfr[ti] = crc32_fast_step(&MycRP.oFrames[firstfr * MycRom.fWidth * MycRom.fHeight + ti], MycRom.fWidth, MycRom.fHeight, FALSE);
         colCRC32lastfr[ti] = crc32_fast_step(&MycRP.oFrames[lastfr * MycRom.fWidth * MycRom.fHeight + ti], MycRom.fWidth, MycRom.fHeight, FALSE);
     }
-    UINT noreffr = firstfr;
+    UINT noreffr = firstfr; 
     UINT32* prow = rowCRC32firstfr;
     UINT32* pcol = colCRC32firstfr;
     for (UINT tl = 0; tl < 2; tl++)
     {
-        for (UINT tk = firstfr + 1; tk < lastfr; tk++)
+        for (UINT tk = firstfr + 1; tk < lastfr; tk++) 
         {
+            
+            
             for (UINT ti = 0; ti < MycRom.fHeight; ti++)
             {
                 rowCRC32acfr[ti] = crc32_fast(&MycRP.oFrames[tk * MycRom.fWidth * MycRom.fHeight + ti * MycRom.fWidth], MycRom.fWidth, FALSE);
@@ -6445,15 +7099,19 @@ void AutoFillScrolling(void)
                 colCRC32acfr[ti] = crc32_fast_step(&MycRP.oFrames[tk * MycRom.fWidth * MycRom.fHeight + ti], MycRom.fWidth, MycRom.fHeight, FALSE);
             }
             bool allgood;
+            
             for (UINT ti = 1; ti < MycRom.fHeight; ti++)
             {
                 allgood = true;
+                
                 if (rowCRC32acfr[0] == prow[ti])
                 {
+                    
                     for (UINT tj = ti + 1; tj < MycRom.fHeight; tj++)
                     {
                         if (rowCRC32acfr[tj - ti] != prow[tj])
                         {
+                            
                             allgood = false;
                             break;
                         }
@@ -6462,29 +7120,34 @@ void AutoFillScrolling(void)
                 else allgood = false;
                 if (allgood)
                 {
-                    if (!nEditExtraResolutionF) CopyRows(noreffr, ti, tk, 0, MycRom.fHeight - ti); // if we don't edit the extra resolution, easy
+                    
+                    if (!nEditExtraResolutionF) CopyRows(noreffr, ti, tk, 0, MycRom.fHeight - ti); 
                     else
                     {
-                        if (MycRom.fHeight == 64)
+                        if (MycRom.fHeight == 64) 
                         {
                             if (ti % 2 == 1) CopyRows(noreffr, ti / 2, tk, 0, MycRom.fHeightX - ti / 2);
                         }
-                        else
+                        else 
                             CopyRows(noreffr, ti * 2, tk, 0, MycRom.fHeightX - ti * 2);
                     }
-                    break;
+                    break; 
                 }
             }
             if (allgood) continue;
+            
             for (UINT ti = 1; ti < MycRom.fHeight; ti++)
             {
                 allgood = true;
+                
                 if (prow[0] == rowCRC32acfr[ti])
                 {
+                    
                     for (UINT tj = ti + 1; tj < MycRom.fHeight; tj++)
                     {
                         if (prow[tj - ti] != rowCRC32acfr[tj])
                         {
+                            
                             allgood = false;
                             break;
                         }
@@ -6493,29 +7156,34 @@ void AutoFillScrolling(void)
                 else allgood = false;
                 if (allgood)
                 {
-                    if (!nEditExtraResolutionF) CopyRows(noreffr, 0, tk, ti, MycRom.fHeight - ti); // if we don't edit the extra resolution, easy
+                    
+                    if (!nEditExtraResolutionF) CopyRows(noreffr, 0, tk, ti, MycRom.fHeight - ti); 
                     else
                     {
-                        if (MycRom.fHeight == 64)
+                        if (MycRom.fHeight == 64) 
                         {
                             if (ti % 2 == 1) CopyRows(noreffr, 0, tk, ti / 2, MycRom.fHeightX - ti / 2);
                         }
-                        else
+                        else 
                             CopyRows(noreffr, 0, tk, ti * 2, MycRom.fHeightX - ti * 2);
                     }
                     break;
                 }
             }
             if (allgood) continue;
+            
             for (UINT ti = 1; ti < MycRom.fWidth; ti++)
             {
                 allgood = true;
+                
                 if (colCRC32acfr[0] == pcol[ti])
                 {
+                    
                     for (UINT tj = ti + 1; tj < MycRom.fWidth; tj++)
                     {
                         if (colCRC32acfr[tj - ti] != pcol[tj])
                         {
+                            
                             allgood = false;
                             break;
                         }
@@ -6524,29 +7192,33 @@ void AutoFillScrolling(void)
                 else allgood = false;
                 if (allgood)
                 {
-                    if (!nEditExtraResolutionF) CopyCols(noreffr, ti, tk, 0, MycRom.fWidth - ti); // if we don't edit the extra resolution, easy
+                    if (!nEditExtraResolutionF) CopyCols(noreffr, ti, tk, 0, MycRom.fWidth - ti); 
                     else
                     {
-                        if (MycRom.fHeight == 64)
+                        if (MycRom.fHeight == 64) 
                         {
                             if (ti % 2 == 1) CopyCols(noreffr, ti / 2, tk, 0, MycRom.fWidthX - ti / 2);
                         }
-                        else
+                        else 
                             CopyCols(noreffr, ti * 2, tk, 0, MycRom.fWidthX - ti * 2);
                     }
                     break;
                 }
             }
             if (allgood) continue;
+            
             for (UINT ti = 1; ti < MycRom.fWidth; ti++)
             {
                 allgood = true;
+                
                 if (pcol[0] == colCRC32acfr[ti])
                 {
+                    
                     for (UINT tj = ti + 1; tj < MycRom.fWidth; tj++)
                     {
                         if (pcol[tj - ti] != colCRC32acfr[tj])
                         {
+                            
                             allgood = false;
                             break;
                         }
@@ -6555,14 +7227,14 @@ void AutoFillScrolling(void)
                 else allgood = false;
                 if (allgood)
                 {
-                    if (!nEditExtraResolutionF) CopyCols(noreffr, 0, tk, ti, MycRom.fWidth - ti); // if we don't edit the extra resolution, easy
+                    if (!nEditExtraResolutionF) CopyCols(noreffr, 0, tk, ti, MycRom.fWidth - ti); 
                     else
                     {
-                        if (MycRom.fHeight == 64)
+                        if (MycRom.fHeight == 64) 
                         {
                             if (ti % 2 == 1) CopyCols(noreffr, 0, tk, ti / 2, MycRom.fWidthX - ti / 2);
                         }
-                        else
+                        else 
                             CopyCols(noreffr, 0, tk, ti * 2, MycRom.fWidthX - ti * 2);
                     }
                     break;
@@ -6577,6 +7249,13 @@ void AutoFillScrolling(void)
 
 
 #define MUL_SIZE_GIF 5
+
+
+
+
+
+
+
 void DrawImagePix(UINT8* pimage, UINT16* protation, UINT pixnb, UINT width, UINT16 pcol, UINT sizepix, UINT16 colrot, UINT16 nocolrot)
 {
     UINT8* pPix = &pimage[((pixnb / width) * sizepix * width * sizepix + (pixnb % width) * sizepix) * 3];
@@ -6586,6 +7265,7 @@ void DrawImagePix(UINT8* pimage, UINT16* protation, UINT pixnb, UINT width, UINT
     {
         for (UINT tj = 0; tj < sizepix - 1; tj++)
         {
+            
             if (((ti != 0) || (tj != 0)) && ((ti != 0) || (tj != sizepix - 2)) && ((ti != sizepix - 2) || (tj != 0)) && ((ti != sizepix - 2) || (tj != sizepix - 2)))
             {
                 rgb565_to_rgb888(pcol, &pPix[(tj * sizepix * width + ti) * 3]);
@@ -6630,7 +7310,24 @@ bool CreateGIF(char* GIFname, UINT8* pimages, UINT8* pimagesX, UINT16* protation
     gifset.fast = false;
     gifski* g = gifski_new2(&gifset);
     gifski_set_file_output2(g, GIFname);
+    
+    
     long acduration = 0;
+    bool isr = false;
+    for (int ti = 0; ti < MAX_COLOR_ROTATIONN; ti++)
+    {
+        if (pcrotations[ti * MAX_LENGTH_COLOR_ROTATION] > 0)
+        {
+            isr = true;
+            break;
+        }
+        if (pcrotationsX[ti * MAX_LENGTH_COLOR_ROTATION] > 0)
+        {
+            isr = true;
+            break;
+        }
+    }
+    if (!isr) acduration = pdurations[nimages - 1];
     int tnofr = 0;
     for (int ti = 0; ti < nimages; ti++)
     {
@@ -6639,9 +7336,9 @@ bool CreateGIF(char* GIFname, UINT8* pimages, UINT8* pimagesX, UINT16* protation
         UINT16* pacrotX = &pcrotationsX[ti * MAX_COLOR_ROTATIONN * MAX_LENGTH_COLOR_ROTATION];
         UINT16* protm = &protationm[ti * MycRom.fHeight * MUL_SIZE_GIF * MycRom.fWidth * MUL_SIZE_GIF * 2];
         UINT16* protmX = &protationmX[ti * MycRom.fHeightX * MUL_SIZE_GIF * MycRom.fWidthX * MUL_SIZE_GIF * 2];
-        UINT32 nextrot[MAX_COLOR_ROTATIONN];
+        UINT32 nextrot[MAX_COLOR_ROTATIONN]; 
         UINT32 acshift[MAX_COLOR_ROTATIONN];
-        UINT32 nextrotX[MAX_COLOR_ROTATIONN];
+        UINT32 nextrotX[MAX_COLOR_ROTATIONN]; 
         UINT32 acshiftX[MAX_COLOR_ROTATIONN];
         bool isrotactive[MAX_COLOR_ROTATIONN];
         bool isrotactiveX[MAX_COLOR_ROTATIONN];
@@ -6652,6 +7349,9 @@ bool CreateGIF(char* GIFname, UINT8* pimages, UINT8* pimagesX, UINT16* protation
             isrotactiveX[tj] = pimagesX && pacrotX[tj * MAX_LENGTH_COLOR_ROTATION] > 0;
             if (isrotactiveX[tj]) nrotX++;
         }
+            /*UINT16 lesrot[MAX_COLOR_ROTATIONN * MAX_LENGTH_COLOR_ROTATION]; 
+        UINT16 lesrotX[MAX_COLOR_ROTATIONN * MAX_LENGTH_COLOR_ROTATION]; 
+        */
         if (poimages)
         {
             for (UINT tj = 0; tj < MycRom.fHeight * MUL_SIZE_GIF; tj++)
@@ -6672,19 +7372,24 @@ bool CreateGIF(char* GIFname, UINT8* pimages, UINT8* pimagesX, UINT16* protation
         }
         else
         {
+            
             memset(acshift, 0, sizeof(UINT32) * MAX_COLOR_ROTATIONN);
             if (pimagesX) memset(acshiftX, 0, sizeof(UINT32) * MAX_COLOR_ROTATIONN);
+            
             for (int tj = 0; tj < MAX_COLOR_ROTATIONN; tj++)
             {
                 if (isrotactive[tj]) nextrot[tj] = pacrot[tj * MAX_LENGTH_COLOR_ROTATION + 1]; else nextrot[tj] = 0xffffffff;
                 if (isrotactiveX[tj]) nextrotX[tj] = pacrotX[tj * MAX_LENGTH_COLOR_ROTATION + 1]; else nextrotX[tj] = 0xffffffff;
             }
+            
             UINT32 nextrota = 0xfffffffe;
+            
             for (int tk = 0; tk < MAX_COLOR_ROTATIONN; tk++)
             {
                 if (nextrot[tk] < nextrota) nextrota = nextrot[tk];
                 if (nextrotX[tk] < nextrota) nextrota = nextrotX[tk];
             }
+            
             for (UINT tj = 0; tj < MycRom.fHeight * MUL_SIZE_GIF; tj++)
                 memcpy(&pGIF[((tj + offsety) * width + offsetox) * 3], &pimages[ti * MycRom.fWidth * MUL_SIZE_GIF * MycRom.fHeight * MUL_SIZE_GIF * 3 + tj * MycRom.fWidth * MUL_SIZE_GIF * 3], MycRom.fWidth * MUL_SIZE_GIF * 3);
             if (pimagesX)
@@ -6693,6 +7398,7 @@ bool CreateGIF(char* GIFname, UINT8* pimages, UINT8* pimagesX, UINT16* protation
                     memcpy(&pGIF[((tj + offsetyX) * width + offsetxX) * 3], &pimagesX[ti * MycRom.fWidthX * MUL_SIZE_GIF * MycRom.fHeightX * MUL_SIZE_GIF * 3 + tj * MycRom.fWidthX * MUL_SIZE_GIF * 3], MycRom.fWidthX * MUL_SIZE_GIF * 3);
             }
             bool oneshot = false;
+            
             if (pdurations[ti] < nextrota)
             {
                 oneshot = true;
@@ -6701,6 +7407,7 @@ bool CreateGIF(char* GIFname, UINT8* pimages, UINT8* pimagesX, UINT16* protation
             UINT32 oldrota = nextrota;
             tnofr++;
             if (oneshot) continue;
+            
             for (int tk = 0; tk < MAX_COLOR_ROTATIONN; tk++)
             {
                 if (nextrot[tk] == nextrota)
@@ -6716,14 +7423,17 @@ bool CreateGIF(char* GIFname, UINT8* pimages, UINT8* pimagesX, UINT16* protation
                     if (acshiftX[tk] == pacrotX[tk * MAX_LENGTH_COLOR_ROTATION]) acshiftX[tk] = 0;
                 }
             }
+            
             while (1 == 1)
             {
+                
                 UINT32 nextrota = 0xfffffffe;
                 for (int tk = 0; tk < MAX_COLOR_ROTATIONN; tk++)
                 {
                     if (nextrot[tk] < nextrota) nextrota = nextrot[tk];
                     if (nextrotX[tk] < nextrota) nextrota = nextrotX[tk];
                 }
+                
                 for (UINT tj = 0; tj < MycRom.fHeight * MUL_SIZE_GIF; tj++)
                 {
                     for (UINT tk = 0; tk < MycRom.fWidth * MUL_SIZE_GIF; tk++)
@@ -6732,6 +7442,7 @@ bool CreateGIF(char* GIFname, UINT8* pimages, UINT8* pimagesX, UINT16* protation
                         UINT16 nocolrot = protm[(tj * MycRom.fWidth * MUL_SIZE_GIF + tk) * 2 + 1];
                         if (colrot != 0xffff)
                         {
+                            
                             rgb565_to_rgb888(pacrot[colrot * MAX_LENGTH_COLOR_ROTATION + 2 + (acshift[colrot] + nocolrot) % pacrot[colrot * MAX_LENGTH_COLOR_ROTATION]],
                                 &pGIF[((tj + offsety) * width + offsetox + tk) * 3]);
                         }
@@ -6749,6 +7460,7 @@ bool CreateGIF(char* GIFname, UINT8* pimages, UINT8* pimagesX, UINT16* protation
                             UINT16 nocolrot = protmX[(tj * MycRom.fWidthX * MUL_SIZE_GIF + tk) * 2 + 1];
                             if (colrot != 0xffff)
                             {
+                                
                                 rgb565_to_rgb888(pacrotX[colrot * MAX_LENGTH_COLOR_ROTATION + 2 + (acshiftX[colrot] + nocolrot) % pacrotX[colrot * MAX_LENGTH_COLOR_ROTATION]],
                                     &pGIF[((tj + offsetyX) * width + offsetxX + tk) * 3]);
                             }
@@ -6785,6 +7497,7 @@ bool CreateGIF(char* GIFname, UINT8* pimages, UINT8* pimagesX, UINT16* protation
             }
         }
     }
+    
     free(pGIF);
     gifski_finish2(g);
     MessageBoxA(hWnd, "GIF file generated", "Success", MB_OK);
@@ -6793,6 +7506,8 @@ bool CreateGIF(char* GIFname, UINT8* pimages, UINT8* pimagesX, UINT16* protation
 
 bool CheckExtraFrameAvailable(UINT frID)
 {
+    
+    
     if (MycRom.isExtraFrame[frID] == 0) return false;
     if (MycRom.BackgroundID[frID] < 0xffff && MycRom.isExtraBackground[MycRom.BackgroundID[frID]] == 0) return false;
     for (UINT ti = 0; ti < MAX_SPRITES_PER_FRAME; ti++)
@@ -6805,6 +7520,7 @@ bool CheckExtraFrameAvailable(UINT frID)
 void SaveAnimatedGif(void)
 {
     if (MycRom.name[0] == 0) return;
+    
     UINT firstfr = acFrame, lastfr = acFrame;
     bool frfound = true;
     bool isextra = CheckExtraFrameAvailable(acFrame);
@@ -6914,7 +7630,7 @@ void SaveAnimatedGif(void)
                     UINT16 colrot = 0xffff;
                     UINT16 nocolrot = 0xffff;
                     UINT tj = tl * MycRom.fWidthX + tk;
-                    UINT tm;
+                    UINT tm; 
                     if (MycRom.fHeightX == 32) tm = tl * 2 * MycRom.fWidth + tk * 2;
                     else tm = tl / 2 * MycRom.fWidth + tk / 2;
                     if (CheckExtraFrameAvailable(ti))
@@ -6947,7 +7663,7 @@ void SaveAnimatedGif(void)
                 }
             }
         }
-        pdurations[ti - firstfr] = MycRP.FrameDuration[ti];
+        pdurations[ti - firstfr] = MycRP.FrameDuration[ti]; 
     }
     char szFile[260];
     strcpy_s(szFile, 260, Dir_GIFs);
@@ -6991,14 +7707,18 @@ void SaveAnimatedGif(void)
 }
 
 bool isTesterfr32, isTesterfr64;
-UINT8* ptesteroldfr;
+
 UINT16* ptesternewfr32, * ptesternewfr64;
 UINT8* ptesterbuffer32, * ptesterbuffer64;
 #define MUL_TESTER_PIXEL_SIZE 5
 
+
+
+
 LRESULT CALLBACK FrameWndProc(HWND hwDlg, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
     case WM_CLOSE:
+        
         return 0;
     case WM_PAINT:
     {
@@ -7017,8 +7737,8 @@ LRESULT CALLBACK FrameWndProc(HWND hwDlg, UINT message, WPARAM wParam, LPARAM lP
             fw = MycRom.fWidthX;
             fh = MycRom.fHeightX;
         }
-        imageWidth = MUL_TESTER_PIXEL_SIZE * fw;
-        imageHeight = MUL_TESTER_PIXEL_SIZE * fh;
+        imageWidth = MUL_TESTER_PIXEL_SIZE * fw; 
+        imageHeight = MUL_TESTER_PIXEL_SIZE * fh; 
         RECT clientRect;
         GetClientRect(hwDlg, &clientRect);
         int clientWidth = clientRect.right - clientRect.left;
@@ -7056,23 +7776,27 @@ LRESULT CALLBACK FrameWndProc(HWND hwDlg, UINT message, WPARAM wParam, LPARAM lP
         }
 
         bitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-        bitmapInfo.bmiHeader.biWidth = imageWidth;
-        bitmapInfo.bmiHeader.biHeight = -imageHeight;
+        bitmapInfo.bmiHeader.biWidth = imageWidth;     
+        bitmapInfo.bmiHeader.biHeight = -imageHeight;  
         bitmapInfo.bmiHeader.biPlanes = 1;
-        bitmapInfo.bmiHeader.biBitCount = 32;        
-        bitmapInfo.bmiHeader.biCompression = BI_RGB;
+        bitmapInfo.bmiHeader.biBitCount = 32;          
+        bitmapInfo.bmiHeader.biCompression = BI_RGB;   
 
         HDC hdc = BeginPaint(hwDlg, &ps);
 
 
+        
         HDC memDC = CreateCompatibleDC(hdc);
         HBITMAP memBitmap = CreateCompatibleBitmap(hdc, imageWidth, imageHeight);
         SelectObject(memDC, memBitmap);
 
+        
         SetDIBitsToDevice(memDC, 0, 0, imageWidth, imageHeight, 0, 0, 0, imageHeight, ptnf, &bitmapInfo, DIB_RGB_COLORS);
 
+        
         BitBlt(hdc, posx, 0, imageWidth, imageHeight, memDC, 0, 0, SRCCOPY);
 
+        
         DeleteObject(memBitmap);
         DeleteDC(memDC);
 
@@ -7089,7 +7813,32 @@ LRESULT CALLBACK FrameWndProc(HWND hwDlg, UINT message, WPARAM wParam, LPARAM lP
 }
 UINT testerframeID;
 UINT16* pTesterFrame32, * pTesterFrame64;
-unsigned char TesterOriginalFrame[512 * 128 * 4];
+unsigned char TesterOriginalFrame[512 * 128 * 4]; 
+ZeDMD* pZeDMD;
+bool isZeDMD;
+
+void SendToZeDMD(void)
+{
+    if (isZeDMD)
+    {
+        UINT width32, width64;
+        if (MycRom.fHeight == 64) { width32 = MycRom.fWidthX; width64 = MycRom.fWidth; }
+        else { width32 = MycRom.fWidth; width64 = MycRom.fWidthX; }
+        if (pZeDMD->GetHeight() == 64 && ptesternewfr64)
+        {
+            if (!isTesterfr64) UpscaleRGB565Frame(ptesternewfr32, ptesternewfr64, width32);
+            pZeDMD->SetFrameSize(width64, 64);
+            pZeDMD->RenderRgb565(ptesternewfr64);
+        }
+        else if (pZeDMD->GetHeight() == 32 && ptesternewfr32)
+        {
+            if (!isTesterfr32) DownscaleRGB565Frame(ptesternewfr64, ptesternewfr32, width64);
+            pZeDMD->SetFrameSize(width32, 32);
+            pZeDMD->RenderRgb565(ptesternewfr32);
+        }
+    }
+
+}
 
 void SendFrameToTester2(unsigned int nofr, UINT8* pframes)
 {
@@ -7111,20 +7860,27 @@ void SendFrameToTester2(unsigned int nofr, UINT8* pframes)
             }
         }
     }
-    ColorizeAFrame(&pframes[nofr * MycRom.fWidth * MycRom.fHeight], &ptesteroldfr, &ptesternewfr32, &ptesternewfr64, &testerframeID, &isTesterfr32, &isTesterfr64);
+    
+    ColorizeAFrame(&pframes[nofr * MycRom.fWidth * MycRom.fHeight], &ptesternewfr32, &ptesternewfr64, &testerframeID, &isTesterfr32, &isTesterfr64);
+    SendToZeDMD();
     InvalidateRect(hFrame32, NULL, FALSE);
     InvalidateRect(hFrame64, NULL, FALSE);
-    //if (nocolors == 4) DmdDev_Render_4_Shades(width, height, &pframes[nofr * width * height]);
-    //else DmdDev_Render_16_Shades(width, height, &pframes[nofr * width * height]);
+    
+    
 }
-UINT8* pTesterFrames;
-UINT* pTesterTimecodes;
-UINT nTesterFrames;
-bool TesterSelectionMode;
-float Testerplayspeed = 1;
-int TesterPlay = 0;
+UINT8* pTesterFrames; 
+UINT* pTesterTimecodes; 
+UINT nTesterFrames; 
+bool TesterSelectionMode; 
+float Testerplayspeed = 1; 
+int TesterPlay = 0; 
 int Tester_Posx = 0, Tester_Posy = 0;
 #define MAX_TESTER_TICKS 30
+
+
+
+
+
 void SetTesterRangeAndTicKs(HWND slider,UINT nFrames)
 {
     SendMessage(slider, TBM_SETRANGE, TRUE, MAKELONG(0, nFrames - 1));
@@ -7150,11 +7906,13 @@ bool CreateFrameWindows(HWND hParent)
         AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME & ~WS_MAXIMIZEBOX, FALSE);
     }
 
+    
     hFrame32 = CreateWindowEx(0, L"FrameTester", L"Frame 32P", WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME & ~WS_MAXIMIZEBOX,
         CW_USEDEFAULT, CW_USEDEFAULT, rc.right - rc.left, rc.bottom - rc.top, hParent, NULL, hInst, NULL);
 
     if (!hFrame32) return false;
 
+    
     ShowWindow(hFrame32, SW_SHOW);
     UpdateWindow(hFrame32);
 
@@ -7228,10 +7986,14 @@ LRESULT CALLBACK Tester_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
     {
         case WM_INITDIALOG:
         {
-            ptesterbuffer32 = ptesterbuffer64 = NULL;
+            if (!CreateFrameWindows(hwDlg))
+            {
+                MessageBoxA(hwDlg, "Couldn't create the windows for tester", "Failed", MB_OK);
+                DestroyWindow(hwDlg);
+                return TRUE;
+            }
             SetDlgItemTextA(hwDlg, IDC_INFO, "Navigate through the selected frames:");
             SetTesterRangeAndTicKs(hChFr, nSelFrames);
-            SendFrameToTester2(SelFrames[0], MycRP.oFrames);
             char tbuf[128];
             GetIDFrameText(testerframeID, cFrameID);
             sprintf_s(tbuf, 128, "Frame Tester                   Current frame: %i / Total: %i       %s", 0, nSelFrames, cFrameID);
@@ -7251,12 +8013,7 @@ LRESULT CALLBACK Tester_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
             SetWindowPos(hwDlg, 0, Tester_Posx, Tester_Posy, 0, 0, SWP_SHOWWINDOW | SWP_NOSIZE | SWP_NOZORDER);
             if (TesterLoop == false) SendMessage(GetDlgItem(hwDlg, IDC_LOOP), BM_SETCHECK, BST_UNCHECKED, 0);
             else SendMessage(GetDlgItem(hwDlg, IDC_LOOP), BM_SETCHECK, BST_CHECKED, 0);
-            if (!CreateFrameWindows(hwDlg))
-            {
-                MessageBoxA(hwDlg, "Couldn't create the windows for tester", "Failed", MB_OK);
-                DestroyWindow(hwDlg);
-                return TRUE;
-            }
+            SendFrameToTester2(SelFrames[0], MycRP.oFrames);
             if (TesterShow32P)
             {
                 CheckDlgButton(hwDlg, IDC_FRAME32, BST_CHECKED);
@@ -7285,7 +8042,7 @@ LRESULT CALLBACK Tester_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
             {
                 KillTimer(hwDlg, 1);
                 int frpos = (int)SendMessage(hChFr, TBM_GETPOS, TRUE, 0);
-                if (TesterPlay == 1)
+                if (TesterPlay == 1) 
                 {
                     frpos++;
                     if (TesterSelectionMode)
@@ -7349,26 +8106,21 @@ LRESULT CALLBACK Tester_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
                 SetTimer(hwDlg, 1, 16, NULL);
                 SendMessage(hwDlg, WM_HSCROLL, 0, 0);
             }
-            //else
+            if (ColorRotateAFrame(&ptesternewfr32, NULL, &ptesternewfr64, NULL))
             {
-                /*int frpos = (int)SendMessage(hChFr, TBM_GETPOS, TRUE, 0);
-                if (TesterSelectionMode) SendFrameToTester2(SelFrames[frpos], MycRP.oFrames);
-                else SendFrameToTester2(frpos, pTesterFrames);*/
-                //ColorizeAFrame(&pframes[nofr * MycRom.fWidth * MycRom.fHeight], &ptesteroldfr, &ptesternewfr32, &ptesternewfr64, &testerframeID);
-                if (ColorRotateAFrame(&ptesteroldfr, &ptesternewfr32, NULL, &ptesternewfr64, NULL))
-                {
-                    InvalidateRect(hFrame32, NULL, FALSE);
-                    InvalidateRect(hFrame64, NULL, FALSE);
-                }
+                SendToZeDMD();
+                InvalidateRect(hFrame32, NULL, FALSE);
+                InvalidateRect(hFrame64, NULL, FALSE);
             }
             return TRUE;
         }
         case WM_PAINT:
         {
+            
             PAINTSTRUCT ps;
             BITMAPINFO bitmapInfo = { 0 };
-            int imageWidth = 512;
-            int imageHeight = 128;
+            int imageWidth = 512; 
+            int imageHeight = 128; 
 
             RECT clientRect;
             GetClientRect(hwDlg, &clientRect);
@@ -7376,22 +8128,27 @@ LRESULT CALLBACK Tester_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
             int posx = (clientWidth - imageWidth) / 2;
 
             bitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-            bitmapInfo.bmiHeader.biWidth = imageWidth;    
-            bitmapInfo.bmiHeader.biHeight = -imageHeight;
+            bitmapInfo.bmiHeader.biWidth = imageWidth;     
+            bitmapInfo.bmiHeader.biHeight = -imageHeight;  
             bitmapInfo.bmiHeader.biPlanes = 1;
-            bitmapInfo.bmiHeader.biBitCount = 32;        
-            bitmapInfo.bmiHeader.biCompression = BI_RGB; 
+            bitmapInfo.bmiHeader.biBitCount = 32;          
+            bitmapInfo.bmiHeader.biCompression = BI_RGB;   
 
             HDC hdc = BeginPaint(hwDlg, &ps);
 
+
+            
             HDC memDC = CreateCompatibleDC(hdc);
             HBITMAP memBitmap = CreateCompatibleBitmap(hdc, imageWidth, imageHeight);
             SelectObject(memDC, memBitmap);
 
+            
             SetDIBitsToDevice(memDC, 0, 0, imageWidth, imageHeight, 0, 0, 0, imageHeight, TesterOriginalFrame, &bitmapInfo, DIB_RGB_COLORS);
 
+            
             BitBlt(hdc, posx, 100, imageWidth, imageHeight, memDC, 0, 0, SRCCOPY);
 
+            
             DeleteObject(memBitmap);
             DeleteDC(memDC);
 
@@ -7418,7 +8175,11 @@ LRESULT CALLBACK Tester_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
                     Tester_Posy = wp.rcNormalPosition.top;
                     SaveWindowPosition();
                     free(ptesterbuffer32);
+                    ptesterbuffer32 = NULL;
                     free(ptesterbuffer64);
+                    ptesterbuffer64 = NULL;
+                    ptesternewfr32 = NULL;
+                    ptesternewfr64 = NULL;
                     DestroyWindow(hFrame32);
                     DestroyWindow(hFrame64);
                     return TRUE;
@@ -7463,7 +8224,7 @@ LRESULT CALLBACK Tester_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
                     Testerplayspeed = 0.25f;
                     return TRUE;
                 }
-                case IDC_REWIND:
+                case IDC_REWIND: 
                 {
                     if (TesterPlay)
                     {
@@ -7597,8 +8358,8 @@ LRESULT CALLBACK Tester_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
             Tester_Posx = wp.rcNormalPosition.left;
             Tester_Posy = wp.rcNormalPosition.top;
             SaveWindowPosition();
-            //DestroyWindow(hFrame32);
-            //DestroyWindow(hFrame64);
+            
+            
             if (pTesterFrames)
             {
                 free(pTesterFrames);
@@ -7610,7 +8371,8 @@ LRESULT CALLBACK Tester_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
                 pTesterTimecodes = NULL;
             }
             return 0;
-        }*/
+        }
+        */
         case WM_HSCROLL:
         {
             char tbuf[128];
@@ -7635,6 +8397,10 @@ LRESULT CALLBACK Tester_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
     }
     return FALSE;
 }
+
+
+
+
 void TestSelectedFrames(void)
 {
     if (MycRom.name[0] == 0) return;
@@ -7644,8 +8410,8 @@ void TestSelectedFrames(void)
         BROWSEINFOA bInfo;
         bInfo.hwndOwner = hWnd;
         bInfo.pidlRoot = NULL;
-        bInfo.pszDisplayName = szDir;
-        bInfo.lpszTitle = "Please, select the VPinMame directory";
+        bInfo.pszDisplayName = szDir; 
+        bInfo.lpszTitle = "Please, select the VPinMame directory"; 
         bInfo.ulFlags = 0;
         bInfo.lpfn = NULL;
         bInfo.lParam = 0;
@@ -7690,8 +8456,9 @@ void TestSelectedFrames(void)
     {
         MessageBoxA(hWnd, "Can't copy the cRZ file in the altcolor\\rom_name directory", "Failed", MB_OK);
         return;
-    }*/
-    //const char* pidmd = InitDmdDevice(Dir_VP, MycRom.name);
+    }
+    */
+    
     if (!InitLibSerum(Dir_VP, MycRom.name))
     {
         MessageBoxA(hWnd, "Couldn't start Serum64.dll v2.0.0+ from the VPinMame folder you chose, thanks to choose another one and try again", "Failed", MB_OK);
@@ -7699,17 +8466,26 @@ void TestSelectedFrames(void)
         SavePaths();
         return;
     }
+    pZeDMD = new ZeDMD();
+    isZeDMD = pZeDMD->Open();
+    if (isZeDMD) pZeDMD->EnableUpscaling();
     DialogBoxA(hInst,MAKEINTRESOURCEA(IDD_TESTER), hWnd, Tester_Proc);
-    //StopDmdDevice();
+    if (isZeDMD) pZeDMD->Close();
+    
     StopLibSerum();
 }
+
+
+
+
+
 void ConvertMaskToSourceReso(UINT8* pDst, UINT8* pSrc)
 {
     if (!nEditExtraResolutionF)
     {
         memcpy(pDst, pSrc, MycRom.fWidth * MycRom.fHeight);
     }
-    else if (MycRom.fHeight == 64)
+    else if (MycRom.fHeight == 64) 
     {
         for (UINT tj = 0; tj < MycRom.fHeight; tj++)
         {
@@ -7717,7 +8493,7 @@ void ConvertMaskToSourceReso(UINT8* pDst, UINT8* pSrc)
                 pDst[tj * MycRom.fWidth + ti] = pSrc[(tj / 2) * MycRom.fWidthX + ti / 2];
         }
     }
-    else
+    else 
     {
         for (UINT tj = 0; tj < MycRom.fHeight; tj++)
         {
@@ -7728,16 +8504,21 @@ void ConvertMaskToSourceReso(UINT8* pDst, UINT8* pSrc)
         }
     }
 }
+
+
+
+
 void AutoCopy(void)
 {
     if (MycRom.name[0] == 0) return;
-    if ((WSelection == 0) || (HSelection == 0)) return;
+    if ((WSelection == 0) || (HSelection == 0)) return; 
     UINT* pselcrc32 = (UINT*)malloc(sizeof(UINT) * MycRom.nFrames);
     if (!pselcrc32)
     {
         cprintf(true, "Auto copy didn't get the memory for CRC32 calculations");
         return;
     }
+    
     UINT8 Copy_Mask_ORG[256*64];
     ConvertMaskToSourceReso(Copy_Mask_ORG, Copy_Mask);
     for (UINT ti = 0; ti < MycRom.nFrames; ti++)
@@ -7745,10 +8526,14 @@ void AutoCopy(void)
     for (UINT ti = 0; ti < MycRom.nFrames; ti++)
     {
         if (ti == acFrame) continue;
+        
         if (pselcrc32[acFrame] == pselcrc32[ti])
         {
+            
+            
             if (!nEditExtraResolutionF)
             {
+                
                 for (UINT tj = 0; tj < MycRom.fWidth * MycRom.fHeight; tj++)
                 {
                     if (Copy_Mask_ORG[tj] != 0)
@@ -7758,7 +8543,7 @@ void AutoCopy(void)
                     }
                 }
             }
-            else
+            else 
             {
                 for (UINT tj = 0; tj < MycRom.fWidthX * MycRom.fHeightX; tj++)
                 {
@@ -7774,6 +8559,9 @@ void AutoCopy(void)
     free(pselcrc32);
     MessageBoxA(hWnd, "Auto Copy completed", "Info", MB_OK);
 }
+
+
+
 
 void Draw_Sprite(float zoom, unsigned int ofx, unsigned int ofy)
 {
@@ -7801,7 +8589,7 @@ void Draw_Sprite(float zoom, unsigned int ofx, unsigned int ofy)
         return;
     }
     glBindTexture(GL_TEXTURE_2D, TxCircleSpr);
-    float sprite_zoom2 = zoom;// sprite_zoom* sprite_zoom_mul;
+    float sprite_zoom2 = zoom;
     UINT16* pSpr;
     UINT8* pSpro;
     if (nEditExtraResolutionS)
@@ -7820,14 +8608,15 @@ void Draw_Sprite(float zoom, unsigned int ofx, unsigned int ofy)
     {
         for (UINT ti = ofx; ti < MAX_SPRITE_WIDTH; ti++)
         {
-            if (pSpro[ti + tj * MAX_SPRITE_WIDTH] < 255)
+            if (pSpro[ti + tj * MAX_SPRITE_WIDTH] < 255) 
             {
-                SetRenderDrawColor565(pSpr[ti + tj * MAX_SPRITE_WIDTH], 255);
+                SetRenderDrawColor565(pSpr[ti + tj * MAX_SPRITE_WIDTH], 255); 
                 RenderDrawPointClip(glfwsprites, (ti - ofx) * zoom, (tj - ofy) * zoom, ScrWsprite - 1, ScrHsprite - 1, zoom);
             }
         }
     }
     glEnd();
+    
     glDisable(GL_TEXTURE_2D);
     glBegin(GL_LINES);
     glColor4ub(mselcol, mselcol, mselcol, 255);
@@ -7835,13 +8624,14 @@ void Draw_Sprite(float zoom, unsigned int ofx, unsigned int ofy)
     {
         for (UINT ti = ofx; ti < MAX_SPRITE_WIDTH; ti++)
         {
-            if (pSpro[ti + tj * MAX_SPRITE_WIDTH] == 255)
+            if (pSpro[ti + tj * MAX_SPRITE_WIDTH] == 255) 
             {
                 glVertex2f((ti - ofx) * sprite_zoom2, (tj - ofy) * sprite_zoom2);
                 glVertex2f((ti - ofx + 1) * sprite_zoom2, (tj - ofy + 1) * sprite_zoom2);
             }
         }
     }
+    
     if (!ExtraResSClicked)
     {
         UINT acdetspr = (UINT)SendMessage(GetDlgItem(hwTB2, IDC_DETSPR), CB_GETCURSEL, 0, 0);
@@ -7863,12 +8653,21 @@ void Draw_Sprite(float zoom, unsigned int ofx, unsigned int ofy)
 }
 
 
+
+
+
+
+
+
 void UpdateSelImage(void)
 {
     glfwMakeContextCurrent(glfwimages);
     glBindTexture(GL_TEXTURE_2D, TxSelImage);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, WiSelection * IMAGE_ZOOM_TEXMUL, HiSelection * IMAGE_ZOOM_TEXMUL, GL_RGBA, GL_UNSIGNED_BYTE, pSelImage);
 }
+
+
+
 
 void UpdateCropSize(void)
 {
@@ -7891,10 +8690,13 @@ void UpdateCropSize(void)
         crop_sizeW = (UINT)(crop_sizeH * SelRatio);
     }
 }
+
+
+
 void UpdateSelBuffer(void)
 {
     UINT fw;
-    //if (nEditExtraResolutionF) fw = MycRom.fWidthX; else fw = MycRom.fWidth;
+    
     if (MycRom.fHeight == 64) fw = MycRom.fWidth; else fw = MycRom.fWidthX;
     for (int tj = 0; tj < (int)HiSelection; tj++)
     {
@@ -7916,6 +8718,9 @@ void UpdateSelBuffer(void)
         }
     }
 }
+
+
+
 
 void CalcImageCropFrame(void)
 {
@@ -7942,6 +8747,10 @@ void CalcImageCropFrame(void)
         }
     }
 }
+
+
+
+
 void GetSelectionSize(void)
 {
     UINT xmax = 0, ymax = 0;
@@ -7977,8 +8786,10 @@ void GetSelectionSize(void)
     }
     WSelection = xmax - XSelection + 1;
     HSelection = ymax - YSelection + 1;
+    
     if (Button_GetCheck(GetDlgItem(hwTB3, IDC_IMGTOBG)) == BST_CHECKED)
     {
+        
         if (MycRom.fHeightX == 64)
         {
             XiSelection = YiSelection = 0;
@@ -7996,6 +8807,7 @@ void GetSelectionSize(void)
     }
     else
     {
+        
         int maxwidth = max((int)MycRom.fWidth, (int)MycRom.fWidthX);
         int minwidth = min((int)MycRom.fWidth, (int)MycRom.fWidthX);
         if ((nEditExtraResolutionF && MycRom.fHeight == 64) || (!nEditExtraResolutionF && MycRom.fHeightX == 64))
@@ -8023,14 +8835,19 @@ void GetSelectionSize(void)
             HiSelection = HSelection;
             NiSelection = NSelection;
             memcpy(Copy_iMask, Copy_Mask, maxwidth * 64);
+            
+            
+            
             if (WiSelection % 2 > 0)
             {
-                if (XiSelection > 0) XiSelection--;
+                if (XiSelection > 0) XiSelection--; 
+                
                 WiSelection++;
             }
             if (HiSelection % 2 > 0)
             {
-                if (YiSelection > 0) YiSelection--;
+                if (YiSelection > 0) YiSelection--; 
+                
                 HiSelection++;
             }
         }
@@ -8057,6 +8874,9 @@ typedef struct
 }linerect_struct;
 linerect_struct myrectas[MAX_RECTAS_CALC];
 int nlrectas = 0, nrectas[MAX_RECTAS_CALC] = { 0,0,0,0,0,0,0 };
+
+
+
 
 void CalcRectas(int lasty, int acy, bool* recton)
 {
@@ -8157,6 +8977,9 @@ void OrderRectas(void)
         CalcRectas(lastti, image_sizeH - 1, recton);
     }
 }
+
+
+
 void Draw_Image(void)
 {
     glfwMakeContextCurrent(glfwimages);
@@ -8185,6 +9008,7 @@ void Draw_Image(void)
     if (TxSelImage == (UINT)-1) return;
     glEnable(GL_BLEND);
     glBindTexture(GL_TEXTURE_2D, TxSelImage);
+    
     glBegin(GL_TRIANGLES);
     glTexCoord2f(0, 0);
     glVertex2i(image_posx + crop_offsetx, image_posy + crop_offsety);
@@ -8288,11 +9112,16 @@ void Draw_Image(void)
 
 #pragma region Project_File_Functions
 
+
+
+
 void Free_cRP(bool freeimported)
 {
+    
     if (MycRP.name[0] != 0)
     {
         MycRP.name[0] = 0;
+        
     }
     if (MycRP.oFrames)
     {
@@ -8310,8 +9139,12 @@ void Free_cRP(bool freeimported)
         MycRP.importedPal = NULL;
     }
 }
+
+
+
 void Free_cRom(void)
 {
+    
     if (MycRom.name[0] != 0)
     {
         MycRom.name[0] = 0;
@@ -8473,12 +9306,18 @@ void Free_cRom(void)
     prevAcBG = (UINT16)-1;
     PreFrameInStrip = 0;
 }
+
+
+
 void Free_Project(void)
 {
     Free_cRP(true);
     Free_cRom();
     InitVariables();
 }
+
+
+
 void SaveVars(void)
 {
     HKEY tKey;
@@ -8501,7 +9340,7 @@ void LoadVars(void)
         DWORD size = 4;
         DWORD val;
         RegGetValueA(tKey, NULL, "VAR_DARKMODE", RRF_RT_REG_DWORD, 0, &val, &size);
-        if (val == 0) Night_Mode = true; else Night_Mode = false;
+        if (val == 0) Night_Mode = true; else Night_Mode = false; 
         SendMessage(hwTB, WM_COMMAND, IDC_NIGHTDAY, 0);
     }
 }
@@ -8647,6 +9486,9 @@ void LoadWindowPosition(void)
         else if (isIconi == 2) ShowWindow(hWnd, SW_SHOWMAXIMIZED);
     }
 }
+
+
+
 bool ColorizedFrame(UINT nofr)
 {
     UINT16* pcfr = &MycRom.cFrames[nofr * MycRom.fHeight * MycRom.fWidth];
@@ -8663,17 +9505,21 @@ bool ColorizedFrame(UINT nofr)
     }
     return false;
 }
+
+
+
 bool Set_Detection_Dwords(void)
 {
-    UINT32 Dwords[MAX_SPRITE_WIDTH * MAX_SPRITE_HEIGHT];
-    UINT16 DwNum[MAX_SPRITE_WIDTH * MAX_SPRITE_HEIGHT];
+    UINT32 Dwords[MAX_SPRITE_WIDTH * MAX_SPRITE_HEIGHT]; 
+    UINT16 DwNum[MAX_SPRITE_WIDTH * MAX_SPRITE_HEIGHT]; 
     for (UINT tm = 0; tm < MycRom.nSprites; tm++)
     {
+        
         for (UINT tl = 0; tl < MAX_SPRITE_DETECT_AREAS; tl++)
         {
-            memset(DwNum, 0, sizeof(UINT16) * MAX_SPRITE_WIDTH * MAX_SPRITE_HEIGHT);
-            UINT16* pdetarea = &MycRom.SpriteDetAreas[tm * 4 * MAX_SPRITE_DETECT_AREAS + tl * 4];
-            if (pdetarea[0] == 0xffff) continue;
+            memset(DwNum, 0, sizeof(UINT16) * MAX_SPRITE_WIDTH * MAX_SPRITE_HEIGHT); 
+            UINT16* pdetarea = &MycRom.SpriteDetAreas[tm * 4 * MAX_SPRITE_DETECT_AREAS + tl * 4]; 
+            if (pdetarea[0] == 0xffff) continue; 
             UINT8* pspro = &MycRom.SpriteOriginal[tm * MAX_SPRITE_WIDTH * MAX_SPRITE_HEIGHT + pdetarea[1] * MAX_SPRITE_WIDTH + pdetarea[0]];
             for (UINT16 tj = 0; tj < pdetarea[3]; tj++)
             {
@@ -8741,6 +9587,10 @@ bool Set_Detection_Dwords(void)
     }
     return true;
 }
+
+
+
+
 int CALLBACK BrowseCallbackProc(HWND hwnd, UINT uMsg, LPARAM lParam, LPARAM lpData)
 {
     LPITEMIDLIST pidlNavigate;
@@ -8776,11 +9626,13 @@ bool Save_cRom(bool autosave, bool fastsave, char* forcepath)
         cprintf(true, "Can't get memory for active frames. Action canceled");
         return false;
     }
+    
     for (UINT32 ti = 0; ti < MycRom.nFrames; ti++)
     {
         if (MycRom.CompMaskID[ti] == 255) MycRom.HashCode[ti] = crc32_fast(&MycRP.oFrames[ti * MycRom.fWidth * MycRom.fHeight], MycRom.fWidth * MycRom.fHeight, MycRom.ShapeCompMode[ti]);
         else MycRom.HashCode[ti] = crc32_fast_mask_shape(&MycRP.oFrames[ti * MycRom.fWidth * MycRom.fHeight], &MycRom.CompMasks[MycRom.CompMaskID[ti] * MycRom.fWidth * MycRom.fHeight], MycRom.fWidth * MycRom.fHeight, MycRom.ShapeCompMode[ti]);
     }
+    
     if (!Set_Detection_Dwords()) return false;
 
     char acDir[260];
@@ -8799,8 +9651,8 @@ bool Save_cRom(bool autosave, bool fastsave, char* forcepath)
         BROWSEINFOA bInfo;
         bInfo.hwndOwner = hWnd;
         bInfo.pidlRoot = NULL;
-        bInfo.pszDisplayName = szDir;
-        bInfo.lpszTitle = "Please, select the Serum directory";
+        bInfo.pszDisplayName = szDir; 
+        bInfo.lpszTitle = "Please, select the Serum directory"; 
         bInfo.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
         bInfo.lpfn = BrowseCallbackProc;
         bInfo.lParam = (LPARAM)pidlStart;
@@ -8836,8 +9688,8 @@ bool Save_cRom(bool autosave, bool fastsave, char* forcepath)
             BROWSEINFOA bInfo;
             bInfo.hwndOwner = hWnd;
             bInfo.pidlRoot = NULL;
-            bInfo.pszDisplayName = szDir;
-            bInfo.lpszTitle = "Please, select the Serum directory";
+            bInfo.pszDisplayName = szDir; 
+            bInfo.lpszTitle = "Please, select the Serum directory"; 
             bInfo.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
             bInfo.lpfn = BrowseCallbackProc;
             bInfo.lParam = (LPARAM)pidlStart;
@@ -8872,6 +9724,7 @@ bool Save_cRom(bool autosave, bool fastsave, char* forcepath)
         }
     }
     NewProj = false;
+    
     for (UINT ti = 0; ti < MycRom.nFrames; ti++)
     {
         for (UINT tj = 0; tj < MycRom.fHeight * MycRom.fWidth; tj++)
@@ -8894,19 +9747,19 @@ bool Save_cRom(bool autosave, bool fastsave, char* forcepath)
     my_fwrite(&MycRom.fHeightX, sizeof(UINT), 1, pfile);
     my_fwrite(&MycRom.nFrames, sizeof(UINT), 1, pfile);
     my_fwrite(&MycRom.noColors, sizeof(UINT), 1, pfile);
-    //my_fwrite(&MycRom.ncColors, sizeof(UINT), 1, pfile);
+    
     my_fwrite(&MycRom.nCompMasks, sizeof(UINT), 1, pfile);
-    //my_fwrite(&MycRom.nMovMasks, sizeof(UINT), 1, pfile);
+    
     my_fwrite(&MycRom.nSprites, sizeof(UINT), 1, pfile);
     my_fwrite(&MycRom.nBackgrounds, sizeof(UINT16), 1, pfile);
     my_fwrite(MycRom.HashCode, sizeof(UINT), MycRom.nFrames, pfile);
     my_fwrite(MycRom.ShapeCompMode, 1, MycRom.nFrames, pfile);
     my_fwrite(MycRom.CompMaskID, 1, MycRom.nFrames, pfile);
-    //my_fwrite(MycRom.MovRctID, 1, MycRom.nFrames, pfile);
+    
     if (MycRom.nCompMasks) my_fwrite(MycRom.CompMasks, 1, MycRom.nCompMasks * MycRom.fWidth * MycRom.fHeight, pfile);
-    //if (MycRom.nMovMasks) my_fwrite(MycRom.MovRcts, 1, MycRom.nMovMasks * 4, pfile);
+    
     my_fwrite(MycRom.isExtraFrame, 1, MycRom.nFrames, pfile);
-    //my_fwrite(MycRom.cPal, 1, MycRom.nFrames * 3 * MycRom.ncColors, pfile);
+    
     my_fwrite(MycRom.cFrames, sizeof(UINT16), MycRom.nFrames* MycRom.fWidth* MycRom.fHeight , pfile);
     my_fwrite(MycRom.cFramesX, sizeof(UINT16), MycRom.nFrames* MycRom.fWidthX* MycRom.fHeightX, pfile);
     my_fwrite(MycRom.DynaMasks, 1, MycRom.nFrames* MycRom.fWidth* MycRom.fHeight, pfile);
@@ -8960,6 +9813,14 @@ bool Save_cRom(bool autosave, bool fastsave, char* forcepath)
     return true;
 }
 
+
+
+
+
+
+
+
+
 void ConvertPalFramesToRGB565Frames(UINT8* cPal, UINT8* oldFrames, UINT nFrames, UINT nValPerFrame, UINT16* newFrames)
 {
     UINT8* pof = oldFrames;
@@ -8974,6 +9835,13 @@ void ConvertPalFramesToRGB565Frames(UINT8* cPal, UINT8* oldFrames, UINT nFrames,
         }
     }
 }
+
+
+
+
+
+
+
 void ConvertPalDynaColsToRGB565DynaCols(UINT8* cPal, UINT8* oDynaCols, UINT nFrames, UINT16* nDynaCols)
 {
     for (UINT ti = 0; ti < nFrames; ti++)
@@ -8990,6 +9858,13 @@ void ConvertPalDynaColsToRGB565DynaCols(UINT8* cPal, UINT8* oDynaCols, UINT nFra
         }
     }
 }
+
+
+
+
+
+
+
 UINT GetAFrameUsingThisSprite(int nospr, UINT8* framesprites, UINT nframes)
 {
     for (UINT ti = 0; ti < nframes; ti++)
@@ -9002,17 +9877,27 @@ UINT GetAFrameUsingThisSprite(int nospr, UINT8* framesprites, UINT nframes)
     return 0;
 }
 
+
+
+
+
+
+
+
+
+
+
 void ConvertPalSpritesToRGB565Sprites(UINT8* cPal, UINT16* SpriteDescriptions, UINT8* FrameSprites, UINT nSprites, UINT nFrames, UINT8* SpriteOriginal, UINT16* SpriteColored)
 {
     for (UINT ti = 0; ti < nSprites; ti++)
     {
         int sproffs = ti * MAX_SPRITE_WIDTH * MAX_SPRITE_HEIGHT;
         int sproffso = ti * 128 * 128;
-        for (int tj = 0; tj < min(128, MAX_SPRITE_HEIGHT); tj++)
+        for (int tj = 0; tj < min(128, MAX_SPRITE_HEIGHT); tj++) 
         {
             for (int tk = 0; tk < 256; tk++)
             {
-                if (tk >= 128) SpriteOriginal[sproffs + tj * 256 + tk] = 255;
+                if (tk >= 128) SpriteOriginal[sproffs + tj * 256 + tk] = 255; 
                 else
                 {
                     if ((SpriteDescriptions[sproffso + tj * 128 + tk] & 0x8000) != 0) SpriteOriginal[sproffs + tj * 256 + tk] = 255;
@@ -9029,13 +9914,20 @@ void ConvertPalSpritesToRGB565Sprites(UINT8* cPal, UINT16* SpriteDescriptions, U
         }
     }
 }
+
+
+
+
+
+
+
 void ConvertPalRotationsToRGB565Rotations(UINT8* cPal, UINT8* oColorRotations, UINT nFrames, UINT16* cColorRotations)
 {
     for (UINT ti = 0; ti < nFrames; ti++)
     {
         int tj = 0;
         int tj2 = 0;
-        while (tj < MAX_COLOR_ROTATIONN && tj2 < 8)
+        while (tj < MAX_COLOR_ROTATIONN && tj2 < 8) 
         {
             UINT8* psrot = &oColorRotations[ti * 8 * 3 + tj2 * 3];
             UINT16* pdrot = &cColorRotations[ti * MAX_LENGTH_COLOR_ROTATION * MAX_COLOR_ROTATIONN + tj * MAX_LENGTH_COLOR_ROTATION];
@@ -9054,6 +9946,14 @@ void ConvertPalRotationsToRGB565Rotations(UINT8* cPal, UINT8* oColorRotations, U
         } 
     }
 }
+
+
+
+
+
+
+
+
 
 void ConvertBackgrounbdBBsToMasks(UINT16* BackgroundBB, UINT16* BackgroundID, UINT16 nFrames, UINT width, UINT height, UINT8* BackgroundMask)
 {
@@ -9074,7 +9974,7 @@ void ConvertBackgrounbdBBsToMasks(UINT16* BackgroundBB, UINT16* BackgroundID, UI
     }
 }
 
-UINT lengthheader = 14 * sizeof(UINT);
+UINT lengthheader = 14 * sizeof(UINT); 
 bool Load_cRom(char* name)
 {
     Free_cRom();
@@ -9085,7 +9985,7 @@ bool Load_cRom(char* name)
         AffLastError((char*)"Load_cRom:fopen_s");
         return false;
     }
-    UINT trash;
+    UINT trash; 
     fread(MycRom.name, 1, 64, pfile);
     fread(&lengthheader, sizeof(UINT), 1, pfile);
     bool isNewFormat = (lengthheader >= 14 * sizeof(UINT));
@@ -9115,19 +10015,19 @@ bool Load_cRom(char* name)
     if (!isNewFormat)
     {
         MycRP.isImported = MycRom.nFrames;
-        fread(&trash, sizeof(UINT), 1, pfile);
+        fread(&trash, sizeof(UINT), 1, pfile); 
     }
     else MycRP.isImported = 0;
     fread(&MycRom.nCompMasks, sizeof(UINT), 1, pfile);
-    if (!isNewFormat) fread(&trash, sizeof(UINT), 1, pfile);
+    if (!isNewFormat) fread(&trash, sizeof(UINT), 1, pfile); 
     fread(&MycRom.nSprites, sizeof(UINT), 1, pfile);
     if (lengthheader >= 13 * sizeof(UINT)) fread(&MycRom.nBackgrounds, sizeof(UINT16), 1, pfile); else MycRom.nBackgrounds = 0;
     MycRom.HashCode = (UINT*)malloc(sizeof(UINT) * MycRom.nFrames);
     MycRom.ShapeCompMode = (UINT8*)malloc(MycRom.nFrames);
     MycRom.CompMaskID = (UINT8*)malloc(MycRom.nFrames);
-    //UINT8* MovRctID = (UINT8*)malloc(MycRom.nFrames); // never used
+    
     MycRom.CompMasks = (UINT8*)malloc(MAX_MASKS * MycRom.fWidth * MycRom.fHeight);
-    //UINT8* MovRcts = (UINT8*)malloc(MycRom.nMovMasks * 4); // never has been so not needed, the number is mandatory 0
+    
     MycRom.isExtraFrame = (UINT8*)malloc(MycRom.nFrames);
     if (!isNewFormat)
     {
@@ -9135,7 +10035,7 @@ bool Load_cRom(char* name)
         if (!MycRP.importedPal)
         {
             cprintf(true, "Can't get the importedpal buffer in Load_cRom");
-            Free_cRom();
+            Free_cRom(); 
             fclose(pfile);
             return false;
         }
@@ -9165,7 +10065,7 @@ bool Load_cRom(char* name)
     MycRom.SpriteDetAreas = (UINT16*)malloc(MycRom.nSprites * sizeof(UINT16) * MAX_SPRITE_DETECT_AREAS * 4);
     MycRom.TriggerID = (UINT32*)malloc(MycRom.nFrames * sizeof(UINT32));
     MycRom.isExtraBackground = (UINT8*)malloc(MycRom.nBackgrounds);
-    //UINT8* BackgroundFrames = (UINT8*)malloc(MycRom.nBackgrounds * MycRom.fWidth * MycRom.fHeight);
+    
     MycRom.BackgroundFrames = (UINT16*)malloc(MycRom.nBackgrounds * MycRom.fWidth * MycRom.fHeight * sizeof(UINT16));
     MycRom.BackgroundFramesX = (UINT16*)malloc(MycRom.nBackgrounds * MycRom.fWidthX * MycRom.fHeightX * sizeof(UINT16));
     MycRom.BackgroundID = (UINT16*)malloc(MycRom.nFrames * sizeof(UINT16));
@@ -9182,7 +10082,7 @@ bool Load_cRom(char* name)
         !BackgroundBB || !MycRom.BackgroundID || !MycRom.BackgroundMask || !MycRom.BackgroundMaskX)
     {
         cprintf(true, "Can't get the buffers in Load_cRom");
-        Free_cRom();
+        Free_cRom(); 
         fclose(pfile);
         return false;
     }
@@ -9190,15 +10090,17 @@ bool Load_cRom(char* name)
     fread(MycRom.HashCode, sizeof(UINT), MycRom.nFrames, pfile);
     fread(MycRom.ShapeCompMode, 1, MycRom.nFrames, pfile);
     fread(MycRom.CompMaskID, 1,  MycRom.nFrames, pfile);
-    if (!isNewFormat) fseek(pfile, MycRom.nFrames, SEEK_CUR);
+    if (!isNewFormat) fseek(pfile, MycRom.nFrames, SEEK_CUR); 
     if (MycRom.nCompMasks) fread(MycRom.CompMasks, 1, MycRom.nCompMasks * MycRom.fWidth * MycRom.fHeight, pfile);
-    //if (MycRom.nMovMasks) fread(MycRom.MovRcts, 1, MycRom.nMovMasks * 4, pfile);
+    
     if (!isNewFormat)
     {
         memset(MycRom.isExtraFrame, 0, MycRom.nFrames);
         fread(MycRP.importedPal, 1, MycRom.nFrames * 3 * 64, pfile);
         fread(cFrames, 1, MycRom.nFrames * MycRom.fWidth * MycRom.fHeight, pfile);
+        
         ConvertPalFramesToRGB565Frames(MycRP.importedPal, cFrames, MycRom.nFrames, MycRom.fWidth*MycRom.fHeight, MycRom.cFrames);
+        
         memset(MycRom.cFramesX, 0, MycRom.nFrames * MycRom.fWidthX* MycRom.fHeightX);
     }
     else
@@ -9241,7 +10143,8 @@ bool Load_cRom(char* name)
         fread(MycRom.SpriteColoredX, sizeof(UINT16), MycRom.nSprites * MAX_SPRITE_WIDTH * MAX_SPRITE_HEIGHT, pfile);
     }
     free(SpriteDescriptions);
-    fseek(pfile, MycRom.nFrames, SEEK_CUR);
+    fseek(pfile, MycRom.nFrames, SEEK_CUR); 
+    
     memset(MycRom.ColorRotations, 0, sizeof(UINT16) * MAX_LENGTH_COLOR_ROTATION * MAX_COLOR_ROTATIONN * MycRom.nFrames);
     memset(MycRom.ColorRotationsX, 0, sizeof(UINT16) * MAX_LENGTH_COLOR_ROTATION * MAX_COLOR_ROTATIONN * MycRom.nFrames);
     memset(MycRom.SpriteDetAreas, 255, sizeof(UINT16) * 4 * MAX_SPRITE_DETECT_AREAS * MycRom.nSprites);
@@ -9258,11 +10161,12 @@ bool Load_cRom(char* name)
         }
     }
     memset(MycRom.isExtraBackground, 0, MycRom.nBackgrounds);
+    
     if (lengthheader >= 9 * sizeof(UINT))
     {
         if (!isNewFormat)
         {
-            fread(ColorRotations, 1, 3 * 8 * MycRom.nFrames, pfile);
+            fread(ColorRotations, 1, 3 * 8 * MycRom.nFrames, pfile); 
             ConvertPalRotationsToRGB565Rotations(MycRP.importedPal, ColorRotations, MycRom.nFrames, MycRom.ColorRotations);
         }
         else
@@ -9286,6 +10190,7 @@ bool Load_cRom(char* name)
                         if (!isNewFormat)
                         {
                             fread(MycRom.BackgroundFrames, 1, MycRom.nBackgrounds* MycRom.fWidth* MycRom.fHeight, pfile);
+                            
                             memset(MycRom.BackgroundFramesX, 0, sizeof(UINT16) * MycRom.nBackgrounds * MycRom.fWidthX * MycRom.fHeightX);
                         }
                         else
@@ -9313,7 +10218,7 @@ bool Load_cRom(char* name)
     }
     free(BackgroundBB);
     free(ColorRotations);
-    //free(cPal);
+    
     image_zoom_srce = false;
     image_zoom_dest = false;
     BlocPause = true;
@@ -9370,10 +10275,12 @@ bool Save_cRP(bool autosave)
 
 bool Load_cRP(char* name)
 {
+    
+    
     bool isNewFormat = (lengthheader >= 14 * sizeof(UINT));
     Free_cRP(false);
-    //char tbuf[MAX_PATH];
-    //sprintf_s(tbuf, MAX_PATH, "%s%s", DumpDir, name);
+    
+    
     FILE* pfile;
     if (fopen_s(&pfile, name, "rb") != 0)
     {
@@ -9419,11 +10326,11 @@ bool Load_cRP(char* name)
     fread(MycRP.activeColSet, sizeof(BOOL), MAX_COL_SETS, pfile);
     if (!isNewFormat)
     {
-        fseek(pfile, 64 * 16, SEEK_CUR);
+        fseek(pfile, 64 * 16, SEEK_CUR); 
         memset(MycRP.ColSets, 0, sizeof(UINT16) * MAX_COL_SETS * 16);
     }
     else
-        fread(MycRP.ColSets, sizeof(UINT16), MAX_COL_SETS * 16, pfile);
+        fread(MycRP.ColSets, sizeof(UINT16), MAX_COL_SETS * 16, pfile); 
     fread(&MycRP.acColSet, sizeof(UINT8), 1, pfile);
     fread(&MycRP.preColSet, sizeof(UINT8), 1, pfile);
     fread(MycRP.nameColSet, sizeof(char), MAX_COL_SETS * 64, pfile);
@@ -9439,15 +10346,18 @@ bool Load_cRP(char* name)
     fread(MycRP.Sprite_Names, sizeof(char), 255 * SIZE_SECTION_NAMES, pfile);
     fread(MycRP.Sprite_Col_From_Frame, sizeof(UINT32), 255, pfile);
     fread(MycRP.FrameDuration, sizeof(UINT32), MycRom.nFrames, pfile);
-    if (!isNewFormat) fseek(pfile, 16 * 255 + 260, SEEK_CUR);
+    if (!isNewFormat) fseek(pfile, 16 * 255 + 260, SEEK_CUR); 
     fread(MycRP.SpriteRect, sizeof(UINT16), 4 * 255, pfile);
     fread(MycRP.SpriteRectMirror, sizeof(BOOL), 2 * 255, pfile);
     if (!isNewFormat && lengthheader >= 13 * sizeof(UINT))
     {
         fread(BGPal, 1, MycRom.nBackgrounds * 3 * 64, pfile);
+        
+        
+        
         memcpy(BackgroundFrames, MycRom.BackgroundFrames, MycRom.nBackgrounds * MycRom.fWidth * MycRom.fHeight);
         ConvertPalFramesToRGB565Frames(BGPal, BackgroundFrames, MycRom.nBackgrounds, MycRom.fWidth * MycRom.fHeight, MycRom.BackgroundFrames);
-        fseek(pfile, MycRom.nBackgrounds * 3 * 8, SEEK_CUR);
+        fseek(pfile, MycRom.nBackgrounds * 3 * 8, SEEK_CUR); 
     }
     if (isNewFormat)
     {
@@ -9485,9 +10395,12 @@ bool Load_cRP(char* name)
 #pragma endregion Project_File_Functions
 
 #pragma region Txt_File_Operations
+
+
+
 unsigned int Count_TXT_Frames(char* TXTF_buffer,size_t TXTF_buffer_len)
 {
-    // check the number of frames in the txt file
+    
     unsigned int nF = 0;
     for (size_t curPos = 0; curPos < TXTF_buffer_len; curPos++)
     {
@@ -9498,10 +10411,11 @@ unsigned int Count_TXT_Frames(char* TXTF_buffer,size_t TXTF_buffer_len)
 
 bool Get_Frames_Ptr_Size_And_Number_Of_Colors(sFrames** ppFrames,UINT nFrames,char* TXTF_buffer,size_t TXTF_buffer_len)
 {
+    
     MycRom.noColors = 4;
     sFrames* pFrames = (sFrames*)malloc(sizeof(sFrames) * nFrames);
     *ppFrames = pFrames;
-    //char tbuf[16];
+    
     if (!pFrames)
     {
         cprintf(true, "Unable to get buffer memory for the frames");
@@ -9517,12 +10431,13 @@ bool Get_Frames_Ptr_Size_And_Number_Of_Colors(sFrames** ppFrames,UINT nFrames,ch
             for (UINT ti = 0; ti < 9; ti++) tbuf[ti + 1] = TXTF_buffer[curPos + ti];
             tbuf[10] = 0;
             pFrames[acFr].timecode = (UINT32)strtoul(tbuf, NULL, 16);
-            // next line
+            
             while ((TXTF_buffer[curPos] != '\n') && (TXTF_buffer[curPos] != '\r')) curPos++;
             while ((TXTF_buffer[curPos] == '\n') || (TXTF_buffer[curPos] == '\r') || (TXTF_buffer[curPos] == ' ')) curPos++;
-            // we are at the beginning of the frame
+            
             pFrames[acFr].active = TRUE;
             pFrames[acFr].ptr = &TXTF_buffer[curPos];
+            
             if (acFr == 0)
             {
                 size_t finPos = curPos;
@@ -9547,6 +10462,7 @@ bool Get_Frames_Ptr_Size_And_Number_Of_Colors(sFrames** ppFrames,UINT nFrames,ch
                     MycRom.fWidthX = MycRom.fWidth * 2;
                 }
             }
+            
             char* pPos = pFrames[acFr].ptr;
             char* pPos2 = pPos;
             for (UINT tj = 0; tj < MycRom.fHeight; tj++)
@@ -9566,12 +10482,13 @@ bool Get_Frames_Ptr_Size_And_Number_Of_Colors(sFrames** ppFrames,UINT nFrames,ch
             acFr++;
         }
     }
-    //if (MycRom.fHeight == 64) acZoom = basezoom; else acZoom = 2 * basezoom;
+    
     return true;
 }
 
 bool Parse_TXT(char* TXTF_name, char* TXTF_buffer, size_t TXTF_buffer_len, sFrames** ppFrames, UINT* pnFrames)
 {
+    
     if (!TXTF_buffer) return false;
     *pnFrames = Count_TXT_Frames(TXTF_buffer, TXTF_buffer_len);
     if (!Get_Frames_Ptr_Size_And_Number_Of_Colors(ppFrames, *pnFrames, TXTF_buffer, TXTF_buffer_len))
@@ -9585,6 +10502,11 @@ bool Parse_TXT(char* TXTF_name, char* TXTF_buffer, size_t TXTF_buffer_len, sFram
 
 void CompareFrames(UINT nFrames, sFrames* pFrames)
 {
+    
+    
+    
+    
+
     UINT nfremoved = 0;
     UINT nfrremtime = 0, nfrremcol = 0, nfrremsame = 0;
     for (int ti = 0; ti < (int)nFrames; ti++)
@@ -9609,6 +10531,7 @@ void CompareFrames(UINT nFrames, sFrames* pFrames)
             }
         }
         else pFrames[ti].timecode = DEFAULT_FRAME_DURATION;
+        
         UINT8 ncols;
         pFrames[ti].hashcode = crc32_fast_count((UINT8*)pFrames[ti].ptr, MycRom.fWidth * MycRom.fHeight, FALSE, &ncols);
         if (filter_color && (filter_ncolor < ncols) && pFrames[ti].active)
@@ -9640,9 +10563,12 @@ void CompareFrames(UINT nFrames, sFrames* pFrames)
 
 void CompareAdditionalFrames(UINT nFrames, sFrames* pFrames)
 {
-    //unsigned int nfkilled = 0;
+    
+    
+    
     UINT nfremoved = 0;
     UINT nfrremtime = 0, nfrremcol = 0, nfrremmask = 0, nfrremsame = 0;
+    
     for (int ti = 0; ti < (int)nFrames; ti++)
     {
         if (!(ti % 200)) Display_Avancement((float)ti / (float)(nFrames - 1), 0, 4);
@@ -9665,6 +10591,7 @@ void CompareAdditionalFrames(UINT nFrames, sFrames* pFrames)
             }
         }
         else pFrames[ti].timecode = DEFAULT_FRAME_DURATION;
+        
         UINT8 ncols;
         pFrames[ti].hashcode = crc32_fast_count((UINT8*)pFrames[ti].ptr, MycRom.fWidth * MycRom.fHeight, FALSE, &ncols);
         if (filter_color && (filter_ncolor < ncols) && pFrames[ti].active)
@@ -9691,6 +10618,7 @@ void CompareAdditionalFrames(UINT nFrames, sFrames* pFrames)
             }
         }
     }
+    
     UINT32* pnomaskhash = (UINT32*)malloc(sizeof(UINT32) * MycRom.nFrames);
     if (!pnomaskhash)
     {
@@ -9712,6 +10640,7 @@ void CompareAdditionalFrames(UINT nFrames, sFrames* pFrames)
             else pnomaskhash[ti] = crc32_fast(&MycRP.oFrames[MycRom.fWidth * MycRom.fHeight * ti], MycRom.fWidth * MycRom.fHeight, FALSE);
         }
     }
+    
     for (unsigned int ti = 0; ti < nFrames; ti++)
     {
         if (pFrames[ti].active == FALSE) continue;
@@ -9771,11 +10700,14 @@ void CompareAdditionalFrames(UINT nFrames, sFrames* pFrames)
 
 bool CopyTXTFrames2Frame(UINT nFrames, sFrames* pFrames)
 {
+    
+    
     unsigned int nF = 0;
     for (unsigned int ti = 0; ti < nFrames; ti++)
     {
         if (pFrames[ti].active == TRUE) nF++;
     }
+    
     MycRP.oFrames = (UINT8*)malloc(nF * sizeof(UINT8) * MycRom.fWidth * MycRom.fHeight);
     if (!MycRP.oFrames)
     {
@@ -9823,14 +10755,15 @@ bool CopyTXTFrames2Frame(UINT nFrames, sFrames* pFrames)
     MycRom.nCompMasks = 0;
     MycRom.nSprites = 0;
     MycRom.nBackgrounds= 0;
-    //size_t sizepalette = MycRom.ncColors * 3;
+    
     /*MycRom.cPal = (UINT8*)malloc(nF * sizepalette);
     if (!MycRom.cPal)
     {
         Free_cRom();
         cprintf(true, "Unable to allocate memory for colorized palettes");
         return false;
-    }*/
+    }
+    */
     MycRom.cFrames = (UINT16*)malloc(nF * MycRom.fWidth * MycRom.fHeight * sizeof(UINT16));
     if (!MycRom.cFrames)
     {
@@ -9988,7 +10921,8 @@ bool CopyTXTFrames2Frame(UINT nFrames, sFrames* pFrames)
                 else MycRP.FrameDuration[MycRom.nFrames] = time2 - time1;
                 if (filter_time && (filter_length > MycRP.FrameDuration[MycRom.nFrames])) pFrames[tk].active = FALSE;
             }
-            else MycRP.FrameDuration[MycRom.nFrames] = 0;*/
+            else MycRP.FrameDuration[MycRom.nFrames] = 0;
+            */
             memset(MycRP.Palette, 0, sizeof(UINT16) * N_PALETTES * 64);
             memset(MycRP.PalNames, 0, N_PALETTES * 64);
             Init_cFrame_Palette2();
@@ -10008,12 +10942,15 @@ bool CopyTXTFrames2Frame(UINT nFrames, sFrames* pFrames)
 
 bool AddTXTFrames2Frame(UINT nFrames, sFrames* pFrames)
 {
+    
+    
     unsigned int nF = 0;
     for (unsigned int ti = 0; ti < nFrames; ti++)
     {
         if (pFrames[ti].active == TRUE) nF++;
     }
     if (nF == 0) return true;
+    
     MycRP.oFrames = (UINT8*)realloc(MycRP.oFrames, (nF + MycRom.nFrames) * sizeof(UINT8) * MycRom.fWidth * MycRom.fHeight);
     if (!MycRP.oFrames)
     {
@@ -10051,14 +10988,16 @@ bool AddTXTFrames2Frame(UINT nFrames, sFrames* pFrames)
         return false;
     }
     memset(&MycRom.isExtraFrame[MycRom.nFrames], 0, nF * sizeof(UINT8));
-    //size_t sizepalette = MycRom.ncColors * 3;
+    
+    
     /*MycRom.cPal = (UINT8*)realloc(MycRom.cPal, (nF + MycRom.nFrames) * sizepalette);
     if (!MycRom.cPal)
     {
         Free_cRom();
         cprintf(true, "Unable to reallocate memory for colorized palettes");
         return false;
-    }*/
+    }
+    */
     MycRom.cFrames = (UINT16*)realloc(MycRom.cFrames, (nF + MycRom.nFrames) * MycRom.fWidth * MycRom.fHeight * sizeof(UINT16));
     if (!MycRom.cFrames)
     {
@@ -10202,7 +11141,8 @@ bool AddTXTFrames2Frame(UINT nFrames, sFrames* pFrames)
                 else if (time2 - time1 > 30000) MycRP.FrameDuration[MycRom.nFrames] = 0;
                 else MycRP.FrameDuration[MycRom.nFrames] = time2 - time1;
             }
-            else MycRP.FrameDuration[MycRom.nFrames] = 0;*/
+            else MycRP.FrameDuration[MycRom.nFrames] = 0;
+            */
             Init_cFrame_Palette2();
             for (unsigned int tj = 0; tj < MycRom.fHeight * MycRom.fWidth; tj++)
             {
@@ -10223,14 +11163,15 @@ void Load_TXT_File(void)
     char acDir[260];
     GetCurrentDirectoryA(260, acDir);
 
-    char* TXTF_buffer = NULL;
+    char* TXTF_buffer = NULL; 
     size_t TXTF_buffer_len = 0;
-    unsigned int nFrames = 0;
-    sFrames* pFrames = NULL;
+    unsigned int nFrames = 0; 
+    sFrames* pFrames = NULL; 
 
+    
     OPENFILENAMEA ofn;
     char szFile[260];
-    //LoadPaths();
+    
     strcpy_s(szFile, 260, Dir_Dumps);
     strcat_s(szFile, 260, "*.txt");
 
@@ -10461,11 +11402,12 @@ void Add_TXT_File(void)
     char acDir[260];
     GetCurrentDirectoryA(260, acDir);
 
-    char* TXTF_buffer = NULL;
+    char* TXTF_buffer = NULL; 
     size_t TXTF_buffer_len = 0;
-    unsigned int nFrames = 0;
+    unsigned int nFrames = 0; 
     sFrames* pFrames = NULL; 
 
+    
     OPENFILENAMEA ofn;
     char szFile[260];
     strcpy_s(szFile, 260, Dir_Dumps);
@@ -10546,6 +11488,9 @@ LRESULT CALLBACK Wait_Proc(HWND hWndDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
 
     return FALSE;
 }
+
+
+
 void SortSections(void)
 {
     unsigned short sortlist[MAX_SECTIONS];
@@ -10553,15 +11498,15 @@ void SortSections(void)
     for (UINT ti = 0; ti < MycRP.nSections; ti++)
     {
         for (UINT tj = ti + 1; tj < MycRP.nSections; tj++)
-            if (_stricmp(&MycRP.Section_Names[sortlist[tj] * SIZE_SECTION_NAMES], &MycRP.Section_Names[sortlist[ti] * SIZE_SECTION_NAMES]) < 0)  //Edit.
+            if (_stricmp(&MycRP.Section_Names[sortlist[tj] * SIZE_SECTION_NAMES], &MycRP.Section_Names[sortlist[ti] * SIZE_SECTION_NAMES]) < 0)  
             {
                 unsigned short tamp = sortlist[tj];
                 sortlist[tj] = sortlist[ti];
                 sortlist[ti] = tamp;
             }
     }
-    UINT32		Section_Firsts[MAX_SECTIONS];
-    char		Section_Names[MAX_SECTIONS * SIZE_SECTION_NAMES];
+    UINT32		Section_Firsts[MAX_SECTIONS]; 
+    char		Section_Names[MAX_SECTIONS * SIZE_SECTION_NAMES]; 
     for (UINT ti = 0; ti < MycRP.nSections; ti++)
     {
         Section_Firsts[ti] = MycRP.Section_Firsts[sortlist[ti]];
@@ -10574,8 +11519,8 @@ void SortSections(void)
 void MoveSection(int nosec, int decalage)
 {
     if (nosec == LB_ERR) return;
-/*	UINT32		Section_Firsts[MAX_SECTIONS]; // first frame of each section
-	char		Section_Names[MAX_SECTIONS * SIZE_SECTION_NAMES]; // Names of the sections
+/*	UINT32		Section_Firsts[MAX_SECTIONS]; 
+	char		Section_Names[MAX_SECTIONS * SIZE_SECTION_NAMES]; 
 */
     UINT32 sfirst;
     char sName[SIZE_SECTION_NAMES];
@@ -10594,6 +11539,7 @@ LRESULT CALLBACK MovSecProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lPara
     {
     case WM_CREATE:
     {
+        
         hListBox = CreateWindowExW(WS_EX_CLIENTEDGE, L"LISTBOX", NULL,WS_CHILD | WS_VISIBLE | WS_VSCROLL,25, 25, 200, 550, hWin, NULL, hInst, NULL);
         if (!hListBox)
         {
@@ -10601,21 +11547,21 @@ LRESULT CALLBACK MovSecProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lPara
             return FALSE;
         }
         ShowWindow(hListBox, TRUE);
-        hwndButtonU = CreateWindow(L"BUTTON", L"UP", WS_TABSTOP | WS_VISIBLE | WS_CHILD, 230, 205, 50, 50, hWin, NULL, hInst, NULL);      // Pointer not needed.
+        hwndButtonU = CreateWindow(L"BUTTON", L"UP", WS_TABSTOP | WS_VISIBLE | WS_CHILD, 230, 205, 50, 50, hWin, NULL, hInst, NULL);      
         if (!hwndButtonU)
         {
             AffLastError((char*)"Create Button Up Window");
             return FALSE;
         }
         ShowWindow(hwndButtonU, TRUE);
-        hwndButtonAlpha = CreateWindow(L"BUTTON", L"ALPHA", WS_TABSTOP | WS_VISIBLE | WS_CHILD, 230, 275, 50, 50, hWin, NULL, hInst, NULL);      // Pointer not needed.
+        hwndButtonAlpha = CreateWindow(L"BUTTON", L"ALPHA", WS_TABSTOP | WS_VISIBLE | WS_CHILD, 230, 275, 50, 50, hWin, NULL, hInst, NULL);      
         if (!hwndButtonAlpha)
         {
             AffLastError((char*)"Create Button Alpha Window");
             return FALSE;
         }
         ShowWindow(hwndButtonU, TRUE);
-        hwndButtonD = CreateWindow(L"BUTTON", L"DOWN", WS_TABSTOP | WS_VISIBLE | WS_CHILD, 230, 345, 50, 50, hWin, NULL, hInst, NULL);      // Pointer not needed.
+        hwndButtonD = CreateWindow(L"BUTTON", L"DOWN", WS_TABSTOP | WS_VISIBLE | WS_CHILD, 230, 345, 50, 50, hWin, NULL, hInst, NULL);      
         if (!hwndButtonD)
         {
             AffLastError((char*)"Create Button Down Window");
@@ -10717,6 +11663,14 @@ void UpdatePalProcList(HWND hComboBox,HWND hEdit)
     SendMessage(hComboBox, CB_SETCURSEL, acPalette, 0);
     SetWindowTextA(hEdit, &MycRP.PalNames[64 * acPalette]);
 }
+
+
+
+
+
+
+
+
 static HWND hPalProcComboBox = NULL;
 static HWND hPalProcEdit = NULL;
 static HWND hPalProcButton = NULL;
@@ -10759,16 +11713,17 @@ LRESULT CALLBACK PalProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
     }
     case WM_MOUSEMOVE:
     {
+        
         TRACKMOUSEEVENT me{};
         me.cbSize = sizeof(TRACKMOUSEEVENT);
         me.dwFlags = TME_HOVER | TME_LEAVE;
         me.hwndTrack = hWin;
         me.dwHoverTime = HOVER_DEFAULT;
         TrackMouseEvent(&me);
-        if (hWin == hPal2) break;
+        if (hWin == hPal2) break; 
         if (hWin == hPal)
         {
-            if (Start_Gradient)
+            if (Start_Gradient) 
             {
                 POINT pt;
                 GetCursorPos(&pt);
@@ -10777,7 +11732,7 @@ LRESULT CALLBACK PalProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
                 Fin_Gradient_Color = (UINT)(acPalette * 64 + ((UINT8)(pt.x - MARGIN_PALETTE_X) / 20) + 8 * ((UINT8)(pt.y - MARGIN_PALETTE_Y) / 20));
                 if (Fin_Gradient_Color < MycRom.noColors) Fin_Gradient_Color = MycRom.noColors;
             }
-            else if (Start_Gradient2)
+            else if (Start_Gradient2) 
             {
                 POINT pt;
                 GetCursorPos(&pt);
@@ -10798,7 +11753,7 @@ LRESULT CALLBACK PalProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
         }
         else
         {
-            if (Start_Gradient)
+            if (Start_Gradient) 
             {
                 POINT pt;
                 GetCursorPos(&pt);
@@ -10812,23 +11767,27 @@ LRESULT CALLBACK PalProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
     }
     case WM_MOUSELEAVE:
     {
+        
+         
+        
         POINT pt;
         RECT rcDialog;
         GetCursorPos(&pt);
         GetWindowRect(hWin, &rcDialog);
         if (PtInRect(&rcDialog, pt)) break;
-        // then we leave
+        
         Start_Gradient = false;
         Start_Gradient2 = false;
         Start_Col_Exchange = false;
         Start_Imported_Col_Exchange = 0;
         DestroyWindow(hWin);
-        if (hWin == hPal) InvalidateRect(GetDlgItem(hwTB, IDC_GRADMODEB), NULL, FALSE);
+        if (hWin == hPal) InvalidateRect(GetDlgItem(hwTB, IDC_GRADMODEB), NULL, FALSE); 
         if (hWin == hPal3)
         {
             InvalidateRect(GetDlgItem(hColSet, IDC_COLORS), NULL, TRUE);
             InvalidateRect(hwTB, NULL, TRUE);
         }
+        UpdateFSneeded = true;
         hPal = hPal2 = hPal3 = NULL;
         break;
     }
@@ -10840,7 +11799,9 @@ LRESULT CALLBACK PalProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
         HBRUSH hbr;
         BeginPaint(hWin, &ps);
         UINT16 col = MycRP.acEditColorsS[noColSel];
-        HPEN hPen = CreatePen(PS_SOLID, 2, RGB(mselcol, mselcol, mselcol));
+        
+        
+        HPEN hPen = CreatePen(PS_SOLID, 2, RGB(mselcol, mselcol, mselcol)); 
         for (UINT tj = 0; tj < 8; tj++)
         {
             for (UINT ti = 0; ti < 8; ti++)
@@ -10857,6 +11818,7 @@ LRESULT CALLBACK PalProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
                 if (col == MycRP.Palette[acPalette * 64 + tj * 8 + ti])
                 {
                     DeleteObject(hbr);
+                    
                     SelectObject(hdc, GetStockObject(NULL_BRUSH));
                     SelectObject(hdc, hPen);
                     Rectangle(hdc, rc.left, rc.top, rc.right, rc.bottom);
@@ -10919,6 +11881,7 @@ LRESULT CALLBACK PalProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
         POINT pt;
         GetCursorPos(&pt);
         ScreenToClient(hWin, &pt);
+        UpdateFSneeded = true;
         if (MycRP.isImported > 0 && Start_Imported_Col_Exchange == 0 && (pt.x >= MARGIN_PALETTE_X) && (pt.x < 160 + MARGIN_PALETTE_X) && (pt.y >= MARGIN_PALETTE_Y + MARGIN_PALETTE_X + 160) && (pt.y <= 160 + MARGIN_PALETTE_Y + MARGIN_PALETTE_X + 160))
         {
             Start_Imported_Col_Exchange = 1;
@@ -10928,6 +11891,7 @@ LRESULT CALLBACK PalProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
         if ((pt.x < MARGIN_PALETTE_X) || (pt.x >= 160 + MARGIN_PALETTE_X) || (pt.y < MARGIN_PALETTE_Y) || (pt.y >= 160 + MARGIN_PALETTE_Y)) break;
         if (hWin == hPal2)
         {
+            
             SaveAction(true, SA_ACCOLORS);
             MycRP.acEditColorsS[noColMod] = MycRP.Palette[acPalette * 64 + ((UINT8)(pt.x - MARGIN_PALETTE_X) / 20) + 8 * ((UINT8)(pt.y - MARGIN_PALETTE_Y) / 20)];
             InvalidateRect(hwTB, NULL, TRUE);
@@ -10948,10 +11912,11 @@ LRESULT CALLBACK PalProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
         }
         else if (Start_Col_Exchange)
         {
+            
             UINT Der_Col_Pos = (UINT)(acPalette * 64 + ((UINT8)(pt.x - MARGIN_PALETTE_X) / 20) + 8 * ((UINT8)(pt.y - MARGIN_PALETTE_Y) / 20));
             if (Der_Col_Pos < MycRom.noColors)
             {
-                //Start_Col_Exchange = false;
+                
                 break;
             }
             UINT16 tmpCol = MycRP.Palette[Pre_Col_Pos];
@@ -10961,8 +11926,10 @@ LRESULT CALLBACK PalProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
         }
         else if ((hWin == hPal) && (!(GetKeyState(VK_SHIFT) & 0x8000)) && (!(GetKeyState(VK_CONTROL) & 0x8000)) && (!(GetKeyState(VK_MENU) & 0x8000)))
         {
+            
             if (noColMod < 16)
             {
+                
                 SaveAction(true, SA_ACCOLORS);
                 MycRP.acEditColorsS[noColSel] = MycRP.Palette[acPalette * 64 + ((UINT8)(pt.x - MARGIN_PALETTE_X) / 20) + 8 * ((UINT8)(pt.y - MARGIN_PALETTE_Y) / 20)];
                 InvalidateRect(hWin, NULL, TRUE);
@@ -10971,6 +11938,7 @@ LRESULT CALLBACK PalProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
             }
             else
             {
+                
                 SaveAction(true, SA_DYNACOLOR);
                 for (UINT tj = 0; tj < nSelFrames; tj++)
                 {
@@ -10988,6 +11956,7 @@ LRESULT CALLBACK PalProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
         }
         else if (GetKeyState(VK_SHIFT) & 0x8000 && !(GetKeyState(VK_CONTROL) & 0x8000))
         {
+            
             Ini_Gradient_Color = (UINT)(acPalette * 64 + ((UINT8)(pt.x - MARGIN_PALETTE_X) / 20) + 8 * ((UINT8)(pt.y - MARGIN_PALETTE_Y) / 20));
             if (Ini_Gradient_Color >= MycRom.noColors || hWin == hPal3)
             {
@@ -10997,6 +11966,8 @@ LRESULT CALLBACK PalProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
         }
         else if ((hWin == hPal) && (GetKeyState(VK_CONTROL) & 0x8000))
         {
+            
+            
             if (GetKeyState(VK_SHIFT) & 0x8000) Draw_Grad_Opposite = true;
             else Draw_Grad_Opposite = false;
             Draw_Grad_Ini = (UINT)(acPalette * 64 + ((UINT8)(pt.x - MARGIN_PALETTE_X) / 20) + 8 * ((UINT8)(pt.y - MARGIN_PALETTE_Y) / 20));
@@ -11005,6 +11976,7 @@ LRESULT CALLBACK PalProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
         }
         else if (GetKeyState(VK_MENU) & 0x8000)
         {
+            
             if (!Start_Col_Exchange)
             {
                 Pre_Col_Pos = (UINT)(acPalette * 64 + ((UINT8)(pt.x - MARGIN_PALETTE_X) / 20) + 8 * ((UINT8)(pt.y - MARGIN_PALETTE_Y) / 20));
@@ -11017,15 +11989,17 @@ LRESULT CALLBACK PalProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
     case WM_LBUTTONUP:
     {
         if (hWin == hPal2) break;
+        UpdateFSneeded = true;
         if (Start_Gradient)
         {
             if (hWin == hPal)
             {
+                
                 SaveAction(true, SA_PALETTE);
                 if (abs(Ini_Gradient_Color - Fin_Gradient_Color) < 2)
                 {
                     Start_Gradient = false;
-                    break;
+                    break; 
                 }
                 UINT icol = min(Ini_Gradient_Color, Fin_Gradient_Color);
                 UINT fcol = max(Ini_Gradient_Color, Fin_Gradient_Color);
@@ -11045,6 +12019,7 @@ LRESULT CALLBACK PalProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
             }
             else
             {
+                
                 SaveAction(true, SA_COLROT);
                 UINT icol = min(Ini_Gradient_Color, Fin_Gradient_Color);
                 UINT fcol = max(Ini_Gradient_Color, Fin_Gradient_Color);
@@ -11058,7 +12033,7 @@ LRESULT CALLBACK PalProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
                     else
                         pcolrot = &MycRom.ColorRotations[SelFrames[ti] * MAX_LENGTH_COLOR_ROTATION * MAX_COLOR_ROTATIONN + acColRot * MAX_LENGTH_COLOR_ROTATION];
                     pcolrot[0] = (UINT16)ncolrot;
-                    pcolrot[1] = 50;
+                    pcolrot[1] = 50; 
                     for (UINT tj = 0; tj < ncolrot; tj++) pcolrot[2 + tj] = MycRP.Palette[icol + tj];
                 }
                 UpdateColorRotDur(hColSet);
@@ -11071,8 +12046,8 @@ LRESULT CALLBACK PalProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
         else if (Start_Imported_Col_Exchange == 1) Start_Imported_Col_Exchange = 2;
         Start_Gradient = false;
         Start_Gradient2 = false;
-        //Start_Imported_Col_Exchange = 0;
-//        Start_Col_Exchange = false;
+        
+
         break;
     }
     case WM_RBUTTONDOWN:
@@ -11121,6 +12096,7 @@ LRESULT CALLBACK PalProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
         else if ((GetKeyState(VK_MENU) & 0x8000) > 0)
         {
             SaveAction(true, SA_PALETTE);
+            
             MycRP.Palette[acPalette * 64 + colclicked] = MycRP.acEditColorsS[noColSel];
         }
         break;
@@ -11132,6 +12108,9 @@ LRESULT CALLBACK PalProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
 }
 
 
+
+
+
 LRESULT CALLBACK WndProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message)
@@ -11139,6 +12118,7 @@ LRESULT CALLBACK WndProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
     case WM_COMMAND:
     {
         int wmId = LOWORD(wParam);
+        
         switch (wmId)
         {
         case IDM_EXIT:
@@ -11192,8 +12172,8 @@ LRESULT CALLBACK WndProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
         int valx = GetSystemMetrics(SM_CXFULLSCREEN) + 15;
         int valy = GetSystemMetrics(SM_CYFULLSCREEN) + 25;
         MINMAXINFO* mmi = (MINMAXINFO*)lParam;
-        mmi->ptMinTrackSize.x = 1680 + 16;
-        mmi->ptMinTrackSize.y = 546 + 59;
+        mmi->ptMinTrackSize.x = 1680 + 16; 
+        mmi->ptMinTrackSize.y = 546 + 59; 
         mmi->ptMaxTrackSize.x = valx;
         mmi->ptMaxTrackSize.y = valy;
         return 0;
@@ -11207,13 +12187,15 @@ LRESULT CALLBACK WndProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
             UpdateFSneeded = true;
             int cxClient = LOWORD(lParam);
             int cyClient = HIWORD(lParam);
+            
             SendMessage(hStatus, WM_SIZE, 0, MAKELPARAM(cxClient, cyClient));
+            
             RECT rcStatusBar;
             GetWindowRect(hStatus, &rcStatusBar);
             int statusBarHeight = rcStatusBar.bottom - rcStatusBar.top;
             MoveWindow(hStatus, 0, cyClient - statusBarHeight, cxClient, statusBarHeight, TRUE);
         }
-    }
+    } 
     case WM_MOVE:
     {
         if (Paste_Mode)
@@ -11241,7 +12223,8 @@ LRESULT CALLBACK WndProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
             {
                 paste_centerx = (int)(tx + frame_zoom * (xmax + xmin) / 2);
                 paste_centery = (int)(ty + frame_zoom * (ymax + ymin) / 2);
-            }*/
+            }
+            */
         }
         break;
     }
@@ -11280,7 +12263,9 @@ LRESULT CALLBACK WndProc2(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
         }
         int cxClient = LOWORD(lParam);
         int cyClient = HIWORD(lParam);
+        
         SendMessage(hStatus2, WM_SIZE, 0, MAKELPARAM(cxClient, cyClient));
+        
         RECT rcStatusBar;
         GetWindowRect(hStatus2, &rcStatusBar);
         int statusBarHeight = rcStatusBar.bottom - rcStatusBar.top;
@@ -11292,8 +12277,8 @@ LRESULT CALLBACK WndProc2(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
         int valx = GetSystemMetrics(SM_CXFULLSCREEN) + 15;
         int valy = GetSystemMetrics(SM_CYFULLSCREEN) + 25;
         MINMAXINFO* mmi = (MINMAXINFO*)lParam;
-        mmi->ptMinTrackSize.x = 1250 + 16;
-        mmi->ptMinTrackSize.y = 546 + 59;
+        mmi->ptMinTrackSize.x = 1250 + 16; 
+        mmi->ptMinTrackSize.y = 546 + 59; 
         mmi->ptMaxTrackSize.x = valx;
         mmi->ptMaxTrackSize.y = valy;
         return 0;
@@ -11330,7 +12315,9 @@ LRESULT CALLBACK WndProc3(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
         if (!IsIconic(hWin)) Calc_Resize_Image();
         int cxClient = LOWORD(lParam);
         int cyClient = HIWORD(lParam);
+        
         SendMessage(hStatus3, WM_SIZE, 0, MAKELPARAM(cxClient, cyClient));
+        
         RECT rcStatusBar;
         GetWindowRect(hStatus3, &rcStatusBar);
         int statusBarHeight = rcStatusBar.bottom - rcStatusBar.top;
@@ -11367,8 +12354,8 @@ LRESULT CALLBACK WndProc3(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
         int valx = GetSystemMetrics(SM_CXFULLSCREEN) + 15;
         int valy = GetSystemMetrics(SM_CYFULLSCREEN) + 25;
         MINMAXINFO* mmi = (MINMAXINFO*)lParam;
-        mmi->ptMinTrackSize.x = 1410 + 16;
-        mmi->ptMinTrackSize.y = 546 + 59;
+        mmi->ptMinTrackSize.x = 1410 + 16; 
+        mmi->ptMinTrackSize.y = 546 + 59; 
         mmi->ptMaxTrackSize.x = valx;
         mmi->ptMaxTrackSize.y = valy;
         return 0;
@@ -11396,6 +12383,10 @@ LRESULT CALLBACK WndProc3(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
     return 0;
 }
 
+
+
+
+
 void UpdateColorSetNames(HWND hwDlg)
 {
     for (UINT ti = 0; ti < 8; ti++)
@@ -11414,6 +12405,10 @@ void UpdateColorSetNames(HWND hwDlg)
         }
     }
 }
+
+
+
+
 void UpdateColorRotDur(HWND hwDlg)
 {
     char tbuf[8];
@@ -11437,6 +12432,10 @@ void UpdateColorRotDur(HWND hwDlg)
         }
     }
 }
+
+
+
+
 void activateColSet(int noSet)
 {
     MycRP.activeColSet[noSet + MycRP.preColSet] = true;
@@ -11448,7 +12447,12 @@ void activateColSet(int noSet)
     MycRom.ColorRotations[acFrame * 3 * MAX_COLOR_ROTATION + noSet * 3 + preColRot + 1] = Fin_Gradient_Color;
     MycRom.ColorRotations[acFrame * 3 * MAX_COLOR_ROTATION + noSet * 3 + preColRot + 2] = 50;
     EnableWindow(GetDlgItem(hColSet, noSet + IDC_NOMCOLSET1), TRUE);
-}*/
+}
+*/
+
+
+
+
 
 void SaveColSetNames(HWND hwDlg)
 {
@@ -11460,6 +12464,9 @@ void SaveColSetNames(HWND hwDlg)
         }
     }
 }
+
+
+
 
 LRESULT CALLBACK ColSet_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
 {
@@ -11516,7 +12523,7 @@ LRESULT CALLBACK ColSet_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
         case WM_DRAWITEM:
         {
             LPDRAWITEMSTRUCT pDIS = (LPDRAWITEMSTRUCT)lParam;
-            if (pDIS->CtlID != IDC_COLORS) return FALSE;
+            if (pDIS->CtlID != IDC_COLORS) return FALSE; 
             RECT rcColors, rcFirst, rcNext;
             GetWindowRect(GetDlgItem(hwDlg, IDC_COLORS), &rcColors);
             rcColors.right -= rcColors.left;
@@ -11534,6 +12541,7 @@ LRESULT CALLBACK ColSet_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
             {
                 if (ColSetMode == 0)
                 {
+                    
                     if (MycRP.activeColSet[tj + MycRP.preColSet])
                     {
                         for (UINT ti = 0; ti < MycRom.noColors; ti++)
@@ -11550,6 +12558,7 @@ LRESULT CALLBACK ColSet_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
                 }
                 else
                 {
+                    
                     if (tj >= MAX_COLOR_ROTATIONN) continue;
                     UINT16* pcolrot;
                     if (nEditExtraResolutionF)
@@ -11565,7 +12574,7 @@ LRESULT CALLBACK ColSet_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
                             rcFirst.right = (ti + 1) * rcColors.right / ncol;
                             rcFirst.top = tj * colstep;
                             rcFirst.bottom = (tj + 1) * colstep - 20;
-                            hbr = CreateSolidBrush(RGB565_to_RGB888(pcolrot[ti+2]));
+                            hbr = CreateSolidBrush(RGB565_to_RGB888(pcolrot[ti + 2]));
                             FillRect(pDIS->hDC, &rcFirst, hbr);
                             DeleteObject(hbr);
                         }
@@ -11579,19 +12588,22 @@ LRESULT CALLBACK ColSet_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
             POINT mp;
             GetCursorPos(&mp);
             RECT rcColors;
+            
             GetWindowRect(GetDlgItem(hwDlg, IDC_COLORS), &rcColors);
-            if ((mp.x < rcColors.left) || (mp.x >= rcColors.right) || (mp.y < rcColors.top) || (mp.y >= rcColors.bottom)) return FALSE; // we are not on the colors zone, so we don't manage the code
+            if ((mp.x < rcColors.left) || (mp.x >= rcColors.right) || (mp.y < rcColors.top) || (mp.y >= rcColors.bottom)) return FALSE; 
             RECT rcFirst, rcNext;
             GetWindowRect(GetDlgItem(hwDlg, IDC_SETSET1), &rcFirst);
             GetWindowRect(GetDlgItem(hwDlg, IDC_SETSET2), &rcNext);
             int colstep = rcNext.top - rcFirst.top;
             int colsize=colstep;
-            //if (MycRom.noColors == 4) colsize /= 4;
+            
             int py = mp.y - rcColors.top;
             if (py % colstep < colsize)
             {
+                
                 if (ColSetMode == 0)
                 {
+                    
                     int scolset = py / colstep + MycRP.preColSet;
                     if (MycRP.activeColSet[scolset])
                     {
@@ -11607,6 +12619,7 @@ LRESULT CALLBACK ColSet_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
                 }
                 else
                 {
+                    
                     int scolset = py / colstep + preColRot;
                     if (scolset >= MAX_COLOR_ROTATIONN) break;
                     UINT16* pcolrot;
@@ -11614,7 +12627,7 @@ LRESULT CALLBACK ColSet_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
                         pcolrot = &MycRom.ColorRotationsX[acFrame * MAX_LENGTH_COLOR_ROTATION * MAX_COLOR_ROTATIONN + scolset * MAX_LENGTH_COLOR_ROTATION];
                     else
                         pcolrot = &MycRom.ColorRotations[acFrame * MAX_LENGTH_COLOR_ROTATION * MAX_COLOR_ROTATIONN + scolset * MAX_LENGTH_COLOR_ROTATION];
-                    //if (pcolrot[0] != 0)
+                    
                     {
                         acColRot = scolset;
                         InvalidateRect(GetDlgItem(hwDlg, IDC_COLORS), NULL, TRUE);
@@ -11641,7 +12654,7 @@ LRESULT CALLBACK ColSet_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
             RECT rcColSet;
             GetWindowRect(hwDlg, &rcColSet);
             GetCursorPos(&mp);
-            if ((mp.x > rcColSet.left) && (mp.x < rcColSet.right) && (mp.y > rcColSet.top) && (mp.y < rcColSet.bottom)) break; // we are on a child control of the dialog, but the cursor didn't leave the dialog
+            if ((mp.x > rcColSet.left) && (mp.x < rcColSet.right) && (mp.y > rcColSet.top) && (mp.y < rcColSet.bottom)) break; 
             SaveColSetNames(hwDlg);
             DestroyWindow(hwDlg);
             hColSet = NULL;
@@ -11649,7 +12662,7 @@ LRESULT CALLBACK ColSet_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
         }
         case WM_INITDIALOG:
         {
-            //if (ColSetMode == 0) SaveAction(true, SA_COLSETS);
+            
             HWND hSB = GetDlgItem(hwDlg, IDC_SBV);
             SCROLLINFO si = { 0 };
             si.cbSize = sizeof(SCROLLINFO);
@@ -11673,6 +12686,7 @@ LRESULT CALLBACK ColSet_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
             {
                 if (ColSetMode == 0)
                 {
+                    
                     SaveAction(true, SA_COLSETS);
                     activateColSet(LOWORD(wParam) - IDC_SETSET1);
                     for (UINT ti = 0; ti < MycRom.noColors; ti++) MycRP.ColSets[(MycRP.preColSet + LOWORD(wParam) - IDC_SETSET1) * 16 + ti] = MycRP.acEditColorsS[ti];
@@ -11680,6 +12694,7 @@ LRESULT CALLBACK ColSet_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
                 }
                 else
                 {
+                    
                     SaveAction(true, SA_COLROT);
                     int noset = LOWORD(wParam) - IDC_SETSET1;
                     for (UINT ti = 0; ti < nSelFrames; ti++)
@@ -11688,7 +12703,7 @@ LRESULT CALLBACK ColSet_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
                             MycRom.ColorRotationsX[SelFrames[ti] * MAX_LENGTH_COLOR_ROTATION * MAX_COLOR_ROTATIONN + MAX_LENGTH_COLOR_ROTATION * noset] = 0;
                         else
                             MycRom.ColorRotations[SelFrames[ti] * MAX_LENGTH_COLOR_ROTATION * MAX_COLOR_ROTATIONN + MAX_LENGTH_COLOR_ROTATION * noset] = 0;
-                        //MyColRot.firstcol[noset] = 255;
+                        
                         EnableWindow(GetDlgItem(hwDlg, IDC_NOMCOLSET1 + noset), FALSE);
                         SetDlgItemTextA(hwDlg, IDC_NOMCOLSET1 + noset, "");
                         InvalidateRect(GetDlgItem(hwDlg, IDC_COLORS), NULL, TRUE);
@@ -11701,6 +12716,7 @@ LRESULT CALLBACK ColSet_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
             {
                 if (ColSetMode == 0)
                 {
+                    
                     SaveAction(true, SA_COLSETS);
                     char tbuf[64];
                     GetDlgItemTextA(hwDlg, LOWORD(wParam), tbuf, 63);
@@ -11711,13 +12727,14 @@ LRESULT CALLBACK ColSet_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
                 }
                 else
                 {
+                    
                     SaveAction(true, SA_COLROT);
                     char tbuf[256];
                     GetDlgItemTextA(hwDlg, LOWORD(wParam), tbuf, 256);
                     int noset = LOWORD(wParam) - IDC_NOMCOLSET1;
                     int val = atoi(tbuf);
                     if (val == 0) val = 5;
-                    if (val > 255) val = 255;
+                    if (val > 255) val = 255; 
                     for (UINT ti = 0; ti < nSelFrames; ti++)
                     {
                         if (nEditExtraResolutionF)
@@ -11733,6 +12750,11 @@ LRESULT CALLBACK ColSet_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
 
     return FALSE;
 }
+
+
+
+
+
 
 void ScreenToClient(HWND hwnd, RECT *prc)
 {
@@ -11758,7 +12780,7 @@ INT_PTR AskName_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
         case WM_INITDIALOG:
         {
             SetDlgItemTextA(hDlg, IDC_NAME, askname_res);
-            //SetFocus(GetDlgItem(hDlg, IDC_NAME));
+            
             return TRUE;
         }
         case WM_COMMAND:
@@ -11802,7 +12824,8 @@ INT_PTR AskName_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
         }
     }
     return DefSubclassProc(hDlg,message,wParam,lParam);
-}*/
+}
+*/
 
 HBRUSH CreateGradientBrush(UINT icol, UINT fcol, HDC hDC,LPRECT prect)
 {
@@ -11850,6 +12873,9 @@ HBRUSH CreateGradientBrush(UINT icol, UINT fcol, HDC hDC,LPRECT prect)
 
     return pattern;
 }
+
+
+
 void EnableDrawButtons(void)
 {
     EnableWindow(GetDlgItem(hwTB, IDC_DRAWPOINT), TRUE);
@@ -11859,11 +12885,17 @@ void EnableDrawButtons(void)
     EnableWindow(GetDlgItem(hwTB, IDC_FILL), TRUE);
     EnableWindow(GetDlgItem(hwTB, IDC_ELLIPSE), TRUE);
 }
+
+
+
 void DisableDrawButtons(void)
 {
     EnableWindow(GetDlgItem(hwTB, IDC_DRAWPOINT), FALSE);
     EnableWindow(GetDlgItem(hwTB, IDC_DRAWRECT), FALSE);
 }
+
+
+
 void UpdateFrameSpriteList(void)
 {
     SendMessage(GetDlgItem(hwTB, IDC_SPRITELIST2), CB_RESETCONTENT, 0, 0);
@@ -11890,6 +12922,10 @@ void UpdateFrameSpriteList(void)
     }
     SendMessage(GetDlgItem(hwTB, IDC_SPRITELIST2), CB_SETCURSEL, 0, 0);
 }
+
+
+
+
 const char* ButtonDescription(HWND hOver)
 {
     if (hOver == GetDlgItem(hwTB, IDC_NEW)) return (const char*)"Create a new Serum project from a TXT dump file";
@@ -11931,6 +12967,9 @@ const char* ButtonDescription(HWND hOver)
         if (hOver == GetDlgItem(hwTB, IDC_COMMON)) return (const char*)"Show you which points in the selected frames are different";
         if (hOver == GetDlgItem(hwTB, IDC_UPDATESAME)) return (const char*)"Update and recalc the same frame list (may take a few seconds)";
         if (hOver == GetDlgItem(hwTB, IDC_TRIGGERLIST)) return (const char*)"List all the triggers available in the Serum";
+        if (hOver == GetDlgItem(hwTB, IDC_MASKTOSEL)) return (const char*)"Selects all frames using the selected mask";
+        if (hOver == GetDlgItem(hwTB, IDC_DELFRMS)) return (const char*)"Minimum duration value of the frames kept while pressing the button below";
+        if (hOver == GetDlgItem(hwTB, IDC_DELDURFRAME)) return (const char*)"Delete the frames with a duration lower than the value above";
     }
     else
     {
@@ -11964,7 +13003,7 @@ const char* ButtonDescription(HWND hOver)
         if (hOver == GetDlgItem(hwTB, IDC_FILL)) return (const char*)"Magic wand tool to draw or select";
         if (hOver == GetDlgItem(hwTB, IDC_ELLIPSE)) return (const char*)"Ellipse tool to draw or select";
         if (hOver == GetDlgItem(hwTB, IDC_FILLED)) return (const char*)"Draw/select rectangles or circles are filled or not?";
-//        if (hOver == GetDlgItem(hwTB, IDC_COPYCOLS)) return (const char*)"Copy the color set from the displayed frame to the other selected ones";
+
         if (hOver == GetDlgItem(hwTB, IDC_COPYCOLS2)) return (const char*)"Copy all the dynamic color sets from the displayed frame to the other selected ones";
         if (hOver == GetDlgItem(hwTB, IDC_CHANGECOLSET)) return (const char*)"Switch between the different dynamic color sets";
         if (hOver == GetDlgItem(hwTB, IDC_COLTODYNA)) return (const char*)"Copy the color set for drawing to the current dynamic set";
@@ -12006,9 +13045,13 @@ const char* ButtonDescription(HWND hOver)
         if (hOver == GetDlgItem(hwTB, IDC_ADDBG)) return (const char*)"Select the current displayed background in the background window as this frame background";
         if (hOver == GetDlgItem(hwTB, IDC_CFTOOF)) return (const char*)"Create a new frame at the end of the project. The ROM image is the current frame colorization. If the colors used to colorize the frame are not the 4 or 16 ones of the first color panel, the action is ognored.";
         if (hOver == GetDlgItem(hwTB, IDC_BAW)) return (const char*)"Convert the full project to black and white. Caution, this action is NOT undoable.";
+        if (hOver == GetDlgItem(hwTB, IDC_LUMSPIN)) return (const char*)"Increases or decreases the current selection of colors by +5% or -5%.";
 }
     return "";
 }
+
+
+
 LRESULT CALLBACK ButtonSubclassProc(HWND hBut, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) 
 {
     switch (message) {
@@ -12029,13 +13072,19 @@ LRESULT CALLBACK ButtonSubclassProc(HWND hBut, UINT message, WPARAM wParam, LPAR
         }
         case WM_MOUSELEAVE:
         {
+            
             SetWindowTextA(hStatus, "");
             break;
         }
     }
 
+    
     return DefSubclassProc(hBut, message, wParam, lParam);
 }
+
+
+
+
 void MaskDrawItem(LPDRAWITEMSTRUCT lpDIS)
 {
     HDC hdc = lpDIS->hDC;
@@ -12064,6 +13113,7 @@ void MaskDrawItem(LPDRAWITEMSTRUCT lpDIS)
         }
     }
 
+    
     if (lpDIS->itemState & ODS_SELECTED)
         SetBkColor(hdc, GetSysColor(COLOR_HIGHLIGHT));
     else
@@ -12116,26 +13166,35 @@ void MaskDrawItem(LPDRAWITEMSTRUCT lpDIS)
             bitmap[i + 2] = temp;
         }
     }
+    
     HDC hdcMem = CreateCompatibleDC(hdc);
     HBITMAP hBitmap = CreateCompatibleBitmap(hdc, 256, 64);
     HBITMAP hOldBitmap = (HBITMAP)SelectObject(hdcMem, hBitmap);
 
+    
     BITMAPINFO bmi = { 0 };
     bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     bmi.bmiHeader.biWidth = 256;
-    bmi.bmiHeader.biHeight = -64;
+    bmi.bmiHeader.biHeight = -64;  
     bmi.bmiHeader.biPlanes = 1;
     bmi.bmiHeader.biBitCount = 24;
     bmi.bmiHeader.biCompression = BI_RGB;
 
+    
     SetDIBitsToDevice(hdcMem, 0, 0, 256, 64, 0, 0, 0, 64, bitmap, &bmi, DIB_RGB_COLORS);
 
+    
     BitBlt(hdc, rcItem.left, rcItem.top + 18, 256, 64, hdcMem, 0, 0, SRCCOPY);
 
+    
     SelectObject(hdcMem, hOldBitmap);
     DeleteObject(hBitmap);
     DeleteDC(hdcMem);
 }
+
+
+
+
 void ShadowSelection(WORD wdir)
 {
     UINT16 acColor = MycRP.acEditColorsS[noColSel];
@@ -12226,6 +13285,11 @@ void ShadowSelection(WORD wdir)
     }
 }
 
+
+
+
+
+
 char isInOriginalColors(UINT16 color)
 {
     for (UINT ti = 0; ti < MycRom.noColors; ti++)
@@ -12263,22 +13327,26 @@ void ConvertCFrameToNewOFrame(void)
     }
     tsFrame.active = true;
     tsFrame.timecode = 100;
-    tsFrame.hashcode = 0;
+    tsFrame.hashcode = 0; 
     AddTXTFrames2Frame(1, &tsFrame);
     free(tsFrame.ptr);
     UpdateFSneeded = true;
 }
 
+
+
+
 INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
-    //UNREFERENCED_PARAMETER(lParam);
+    
     switch (message)
     {
         case WM_INITDIALOG:
         {
-            /*HWND hwndChild = GetWindow(hDlg, GW_CHILD); // get the first child window
+            /*HWND hwndChild = GetWindow(hDlg, GW_CHILD); 
             while (hwndChild != NULL)
-            {*/
+            {
+            */
             SetWindowSubclass(GetDlgItem(hDlg, IDC_NEW), ButtonSubclassProc, 0, 0);
             SetWindowSubclass(GetDlgItem(hDlg, IDC_ADDTXT), ButtonSubclassProc, 0, 0);
             SetWindowSubclass(GetDlgItem(hDlg, IDC_OPEN), ButtonSubclassProc, 0, 0);
@@ -12318,6 +13386,9 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 SetWindowSubclass(GetDlgItem(hDlg, IDC_COMMON), ButtonSubclassProc, 0, 0);
                 SetWindowSubclass(GetDlgItem(hDlg, IDC_UPDATESAME), ButtonSubclassProc, 0, 0);
                 SetWindowSubclass(GetDlgItem(hDlg, IDC_TRIGGERLIST), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_MASKTOSEL), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_DELFRMS), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_DELDURFRAME), ButtonSubclassProc, 0, 0);
                 HFONT hFont = CreateFont(12, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Arial");
                 SendMessage(GetDlgItem(hDlg, IDC_SAMEFRAME), WM_SETFONT, WPARAM(hFont), TRUE);
             }
@@ -12328,8 +13399,8 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 {
                     SetWindowSubclass(GetDlgItem(hDlg, IDC_COL1 + ti), ButtonSubclassProc, 0, 0);
                     SetWindowSubclass(GetDlgItem(hDlg, IDC_DYNACOL1 + ti), ButtonSubclassProc, 0, 0);
-                    //char tbuf[512];
-                    //sprintf_s(tbuf, 512, "(Left click)Select/(Right click)Modify the color #%i of the palette for drawing", ti+1);
+                    
+                    
                 }
                 SetWindowSubclass(GetDlgItem(hDlg, IDC_COLSET), ButtonSubclassProc, 0, 0);
                 SetWindowSubclass(GetDlgItem(hDlg, IDC_COLPICK), ButtonSubclassProc, 0, 0);
@@ -12385,6 +13456,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 SetWindowSubclass(GetDlgItem(hDlg, IDC_ADDBG), ButtonSubclassProc, 0, 0);
                 SetWindowSubclass(GetDlgItem(hDlg, IDC_CFTOOF), ButtonSubclassProc, 0, 0);
                 SetWindowSubclass(GetDlgItem(hDlg, IDC_BAW), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_LUMSPIN), ButtonSubclassProc, 0, 0);
 
                 if (MycRP.DrawColMode == 1)
                 {
@@ -12416,6 +13488,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
         case WM_PAINT:
         {
             if (MycRom.name[0] == 0) return FALSE;
+            
             if (Edit_Mode == 1)
             {
                 PAINTSTRUCT ps;
@@ -12448,13 +13521,16 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
         }
         case WM_DRAWITEM:
         {
+            
             if (wParam == IDC_MASKLIST && lParam != NULL && Edit_Mode == 0) MaskDrawItem((LPDRAWITEMSTRUCT)lParam);
             else if ((MycRom.name[0] != 0) && (Edit_Mode == 1))
             {
+                
                 LPDRAWITEMSTRUCT lpdis = (LPDRAWITEMSTRUCT)lParam;
                 UINT tpm;
                 if ((lpdis->CtlID >= IDC_COL1) && (lpdis->CtlID < IDC_COL1 + MycRom.noColors))
                 {
+                    
                     if (lpdis->CtlID)
                         tpm = lpdis->CtlID - IDC_COL1;
                     HBRUSH bg = CreateSolidBrush(RGB565_to_RGB888(MycRP.acEditColorsS[tpm]));
@@ -12474,6 +13550,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 else if ((lpdis->CtlID >= IDC_DYNACOL1) && (lpdis->CtlID < IDC_DYNACOL1 + MycRom.noColors))
                 {
+                    
                     UINT16* pdync;
                     if (nEditExtraResolutionF)
                         pdync = &MycRom.Dyna4ColsX[acFrame * MAX_DYNA_SETS_PER_FRAMEN * MycRom.noColors + acDynaSet * MycRom.noColors];
@@ -12491,6 +13568,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 else if (lpdis->CtlID == IDC_GRADMODEB)
                 {
+                    
                     RECT tr;
                     tr.left = lpdis->rcItem.left;
                     tr.right = lpdis->rcItem.right;
@@ -12529,6 +13607,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
             {
                 case IDC_NEW:
                 {
+                    
                     Load_TXT_File();
                     InitVariables();
                     UpdateURCounts();
@@ -12537,12 +13616,13 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                     Calc_Resize_Image();
                     Calc_Resize_BG();
                     UpdateFSneeded = true;
-                    Update_Toolbar = true;// CreateToolbar();
+                    Update_Toolbar = true;
                     Update_Toolbar2 = true;
                     return TRUE;
                 }
                 case IDC_ADDTXT:
                 {
+                    
                     if (MycRom.name[0])
                     {
                         Add_TXT_File();
@@ -12551,13 +13631,14 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                         Calc_Resize_Image();
                         Calc_Resize_BG();
                         UpdateFSneeded = true;
-                        Update_Toolbar = true;// CreateToolbar();
+                        Update_Toolbar = true;
                         Update_Toolbar2 = true;
                     }
                     return TRUE;
                 }
                 case IDC_ORGMODE:
                 {
+                    
                     if (hPal)
                     {
                         DestroyWindow(hPal);
@@ -12570,7 +13651,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                     }
                     Edit_Mode = 0;
                     UpdateFSneeded = true;
-                    Update_Toolbar = true;// CreateToolbar();
+                    Update_Toolbar = true;
                     glfwSetCursor(glfwframe, glfwarrowcur);
                     SetCursor(hcArrow);
                     Color_Pipette = 0;
@@ -12580,11 +13661,12 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_COLMODE:
                 {
+                    
                     Edit_Mode = 1;
                     Predraw_Frame_For_Rotations(acFrame);
                     Predraw_BG_For_Rotations(acBG);
                     UpdateFSneeded = true;
-                    Update_Toolbar = true;// CreateToolbar();
+                    Update_Toolbar = true;
                     Calc_Resize_Frame();
                     return TRUE;
                 }
@@ -12614,12 +13696,13 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 case IDC_DISPEXTRA:
                 {
                     if (MycRom.name[0] == 0 || MycRom.nFrames == 0 || Paste_Mode) return TRUE;
+                    
                     ExtraResFClicked = !ExtraResFClicked;
                     if (MycRom.isExtraFrame[acFrame] > 0 && ExtraResFClicked) nEditExtraResolutionF = true;
                     else nEditExtraResolutionF = false;
                     FreeCopyMasks();
                     UpdateFSneeded = true;
-                    //Update_Toolbar = true;
+                    
                     Calc_Resize_Frame();
                     Calc_Resize_Image();
                     InitColorRotation();
@@ -12628,6 +13711,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_SAVE:
                 {
+                    
                     if (MycRom.name[0] == 0) return TRUE;
                     if (Save_cRom(false, false,(char*)""))
                     {
@@ -12638,6 +13722,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_OPEN:
                 {
+                    
                     char acDir[260],acFile[260];
                     GetCurrentDirectoryA(260, acDir);
                     OPENFILENAMEA ofn;
@@ -12679,7 +13764,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                         {
                             if (MessageBoxA(hWnd, "This cRom was automatically saved, if you manually save it, it will overwrite any previously manually saved file on the same rom, even if it was more recent. Do you still want to open it?", "Caution", MB_YESNO) == IDNO) return TRUE;
                         }
-                        if (!Load_cRom(acFile))
+                        if (!Load_cRom(acFile)) 
                         {
                             Free_Project();
                             return FALSE;
@@ -12702,7 +13787,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                         InitColorRotation();
                         UpdateFSneeded = true;
                         UpdateSSneeded = true;
-                        Update_Toolbar = true;// CreateToolbar();
+                        Update_Toolbar = true;
                         Update_Toolbar2 = true;
                         UpdateSpriteList3();
                     }
@@ -12725,6 +13810,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 case IDC_COL15:
                 case IDC_COL16:
                 {
+                    
                     if (LOWORD(wParam) >= IDC_COL1 + MycRom.noColors) return TRUE;
                     noColMod = noColSel = LOWORD(wParam) - IDC_COL1;
                     InvalidateRect(hwTB, NULL, TRUE);
@@ -12734,11 +13820,12 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                         DestroyWindow(hColSet);
                         hColSet = NULL;
                     }
-                    Choose_Color_Palette(LOWORD(wParam));
+                    Choose_Color_Palette(LOWORD(wParam)); 
                     return TRUE;
                 }
                 case IDC_COLSET:
                 {
+                    
                     if (MycRom.name[0] == 0) return TRUE;
                     if (hPal)
                     {
@@ -12761,21 +13848,24 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_1COLMODE:
                 {
+                    
                     MycRP.DrawColMode = 0;
                     EnableDrawButtons();
                     return TRUE;
                 }
                 case IDC_4COLMODE:
                 {
+                    
                     MycRP.DrawColMode = 1;
                     EnableDrawButtons();
                     return TRUE;
                 }
                 case IDC_GRADMODE:
                 {
+                    
                     MycRP.DrawColMode = 2;
                     if ((MycRP.Draw_Mode != 1) && (MycRP.Draw_Mode != 3) && (MycRP.Draw_Mode != 5))
-                        MycRP.Draw_Mode = 1;
+                        MycRP.Draw_Mode = 1; 
                     InvalidateRect(hwTB, NULL, TRUE);
                     DisableDrawButtons();
                     return TRUE;
@@ -12793,11 +13883,13 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_UNDO:
                 {
+                    
                     RecoverAction(true);
                     return TRUE;
                 }
                 case IDC_REDO:
                 {
+                    
                     RecoverAction(false); 
                     return TRUE;
                 }
@@ -12808,17 +13900,20 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 case IDC_FILL:
                 case IDC_ELLIPSE:
                 {
+                    
                     MycRP.Draw_Mode = (UINT8)(LOWORD(wParam) - IDC_DRAWPOINT);
                     InvalidateRect(hDlg, NULL, TRUE);
                     return TRUE;
                 }
                 case IDC_FILLED:
                 {
+                    
                     if (Button_GetCheck(GetDlgItem(hwTB, IDC_FILLED)) == BST_CHECKED) MycRP.Fill_Mode = TRUE; else MycRP.Fill_Mode = FALSE;
                     return TRUE;
                 }
                 case IDC_COPYCOLS2:
                 {
+                    
                     if (MycRom.name[0] == 0) return TRUE;
                     SaveAction(true, SA_DYNACOLOR);
                     for (UINT ti = 0; ti < nSelFrames; ti++)
@@ -12831,6 +13926,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_COLPICK:
                 {
+                    
                     if (MycRom.name[0] == 0) return TRUE;
                     if (Color_Pipette > 0) Color_Pipette = 0; else Color_Pipette = 1;
                     Mouse_Mode = 0;
@@ -12848,12 +13944,14 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_POINTMASK:
                 {
+                    
                     MycRP.Mask_Sel_Mode = 0;
                     InvalidateRect(hDlg, NULL, TRUE);
                     return TRUE;
                 }
                 case IDC_RECTMASK:
                 {
+                    
                     MycRP.Mask_Sel_Mode = 1;
                     MouseIniPosx = -1;
                     InvalidateRect(hDlg, NULL, TRUE);
@@ -12861,12 +13959,14 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_ZONEMASK:
                 {
+                    
                     MycRP.Mask_Sel_Mode = 2;
                     InvalidateRect(hDlg, NULL, TRUE);
                     return TRUE;
                 }
                 case IDC_MASKLIST:
                 {
+                    
                     if (MycRom.name[0] == 0) return TRUE;
                     unsigned char acpos = (unsigned char)SendMessage(GetDlgItem(hDlg, IDC_MASKLIST), CB_GETCURSEL, 0, 0) - 1;
                     if (HIWORD(wParam) == CBN_SELCHANGE)
@@ -12896,6 +13996,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_MASKLIST2:
                 {
+                    
                     if (MycRom.name[0] == 0) return TRUE;
                     unsigned char acpos = (unsigned char)SendMessage(GetDlgItem(hDlg, IDC_MASKLIST2), CB_GETCURSEL, 0, 0) - 1;
                     if (HIWORD(wParam) == CBN_SELCHANGE)
@@ -12943,6 +14044,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 case IDC_DYNACOL15:
                 case IDC_DYNACOL16:
                 {
+                    
                     if (LOWORD(wParam) >= IDC_DYNACOL1 + MycRom.noColors) return TRUE;
                     if (MycRom.name[0] == 0) return TRUE;
                     if (hColSet)
@@ -12951,11 +14053,12 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                         hColSet = NULL;
                     }
                     noColMod = 16 + LOWORD(wParam) - IDC_DYNACOL1;
-                    Choose_Color_Palette(LOWORD(wParam));
+                    Choose_Color_Palette(LOWORD(wParam)); 
                     return TRUE;
                 }
                 case IDC_DELSAMEFR:
                 {
+                    
                     if ((MycRom.name[0] == 0) || (nSameFrames == 0)) return TRUE;
                     SaveAction(true, SA_FRAMES);
                     int inisfr = nSameFrames;
@@ -12977,6 +14080,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_DELSELSAMEFR:
                 {
+                    
                     if (MycRom.name[0] == 0) return TRUE;
                     int nDelFrames = 0;
                     SaveAction(true, SA_FRAMES);
@@ -13017,8 +14121,9 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_DELALLSAMEFR:
                 {
+                    
                     if (MycRom.name[0] == 0) return TRUE;
-                    //if (MessageBox(hDlg, L"CAUTION!!!!! This action can't be undone, are you sure you want to delete all the similar frames?\r\nBe aware that if your comparison masks are not correctly/accurately drawn, you may lost some frames that you still need.", L"Confirm", MB_YESNO) == IDYES)
+                    
                     {
                         SaveAction(true, SA_FRAMES);
                         acFrame = 0;
@@ -13060,8 +14165,9 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_DELFRAME:
                 {
+                    
                     if (MycRom.name[0] == 0) return TRUE;
-                    //if (MessageBox(hDlg, L"This action can't be undone, are you sure you want to delete those frames?", L"Confirm", MB_YESNO) == IDYES)
+                    
                     {
                         SaveAction(true, SA_FRAMES);
                         int inisfr = nSelFrames;
@@ -13080,8 +14186,9 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_DELDURFRAME:
                 {
+                    
                     if (MycRom.name[0] == 0) return TRUE;
-                    //if (MessageBox(hDlg, L"This action can't be undone, are you sure you want to delete those frames?", L"Confirm", MB_YESNO) == IDYES)
+                    
                     {
                         SaveAction(true, SA_FRAMES);
                         int inisfr = nSelFrames;
@@ -13107,6 +14214,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_SHAPEMODE:
                 {
+                    
                     if (MycRom.name[0] == 0) return TRUE;
                     SaveAction(true, SA_SHAPEMODE);
                     if (SendMessage(GetDlgItem(hwTB, IDC_SHAPEMODE), BM_GETCHECK, 0, 0) == BST_CHECKED)
@@ -13122,6 +14230,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_COPY:
                 {
+                    
                     if (MycRom.name[0] == 0) return TRUE;
                     SaveAction(true, SA_COPYMASK);
                     bool datafound = false;
@@ -13156,6 +14265,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                     }
                     int cminx = fw, cmaxx = -1;
                     int cminy = fh, cmaxy = -1;
+                    
                     for (int tj = 0; tj < (int)fh; tj++)
                     {
                         for (int ti = 0; ti < (int)fw; ti++)
@@ -13225,6 +14335,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_PASTE:
                 {
+                    
                     if (MycRom.name[0] == 0) return TRUE;
                     if (Paste_Mode) Paste_Mode = false; else Paste_Mode = true;
                     Mouse_Mode = 0;
@@ -13265,11 +14376,13 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                     {
                         paste_centerx = (int)(tx + frame_zoom * (xmax + xmin) / 2);
                         paste_centery = (int)(ty + frame_zoom * (ymax + ymin) / 2);
-                    }*/
+                    }
+                    */
                     return TRUE;
                 }
                 case IDC_ADDSECTION:
                 {
+                    
                     if (MycRom.name[0] == 0) return TRUE;
                     int tj = is_Section_First(acFrame);
                     char tbuf[SIZE_SECTION_NAMES];
@@ -13298,6 +14411,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_DELSECTION:
                 {
+                    
                     int ti = Which_Section(acFrame);
                     if (ti == -1) return TRUE;
                     char tbuf[256];
@@ -13313,10 +14427,11 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_MOVESECTION:
                 {
+                    
                     if (MycRom.name[0] == 0) return TRUE;
                     RECT rc;
                     GetWindowRect(GetDlgItem(hwTB, IDC_MOVESECTION), &rc);
-                    hMovSec = CreateWindowEx(0, L"MovSection", L"", WS_POPUP, rc.left-50, rc.top, 300, 600, NULL, NULL, hInst, NULL);       // Parent window.
+                    hMovSec = CreateWindowEx(0, L"MovSection", L"", WS_POPUP, rc.left-50, rc.top, 300, 600, NULL, NULL, hInst, NULL);       
                     if (!hMovSec)
                     {
                         AffLastError((char*)"Create Move Section Window");
@@ -13327,6 +14442,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_SECTIONLIST:
                 {
+                    
                     if (MycRom.name[0] == 0) return TRUE;
                     unsigned char acpos = (unsigned char)SendMessage(GetDlgItem(hDlg, IDC_SECTIONLIST), CB_GETCURSEL, 0, 0) - 1;
                     if ((HIWORD(wParam) == CBN_SELCHANGE) && (acpos < MAX_SECTIONS - 1))
@@ -13340,6 +14456,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_COLTODYNA:
                 {
+                    
                     if (MycRom.name[0] == 0) return TRUE;
                     SaveAction(true,SA_DYNACOLOR);
                     for (UINT tj = 0; tj < nSelFrames; tj++)
@@ -13357,6 +14474,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_INVERTSEL:
                 {
+                    
                     if (MycRom.name[0] == 0) return TRUE;
                     SaveAction(true, SA_COMPMASK);
                     UINT nomsk = (UINT)MycRom.CompMaskID[acFrame];
@@ -13373,10 +14491,12 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_INVERTSEL2:
                 {
+                    
                     if (MycRom.name[0] == 0) return TRUE;
                     SaveAction(true, SA_COPYMASK);
                     for (UINT ti = 0; ti < 64 * 256; ti++)
                     {
+                        
                         if (Copy_Mask[ti] == 0) Copy_Mask[ti] = 1; else Copy_Mask[ti] = 0;
                     }
                     GetSelectionSize();
@@ -13384,7 +14504,8 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_ADDSPRITE2:
                 {
-                    if (MycRom.name[07] == 0) return TRUE;
+                    
+                    if (MycRom.name[0] == 0) return TRUE;
                     if (NSelection > 0)
                     {
                         if (MessageBoxA(hWnd, "There is a selection in the frame, it will be used as a bounding box for the sprite. Do you confirm?", "Confirm", MB_YESNO) == IDNO) return TRUE;
@@ -13394,6 +14515,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                     for (UINT tj = 0; tj < nSelFrames; tj++)
                     {
                         UINT ti;
+                        
                         for (ti = 0; ti < MAX_SPRITES_PER_FRAME; ti++)
                         {
                             if (MycRom.FrameSprites[SelFrames[tj] * MAX_SPRITES_PER_FRAME + ti] == acSprite) break; 
@@ -13454,10 +14576,11 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_DELSPRITE2:
                 {
+                    
                     int acpos = (int)SendMessage(GetDlgItem(hwTB, IDC_SPRITELIST2), CB_GETCURSEL, 0, 0);
                     if (acpos == -1) return TRUE;
                     int acsprite = MycRom.FrameSprites[acFrame * MAX_SPRITES_PER_FRAME + acpos];
-                    //if (MycRom.isExtraSprite && MycRom.isExtraSprite[acSprite] > 0) CheckDlgButton(hwTB2, IDC_EXTRARES, BST_CHECKED); else CheckDlgButton(hwTB2, IDC_EXTRARES, BST_UNCHECKED);
+                    
                     SaveAction(true, SA_FRAMESPRITES);
                     for (UINT tj = 0; tj < nSelFrames; tj++)
                     {
@@ -13483,6 +14606,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_COLROT:
                 {
+                    
                     if (MycRom.name[0] == 0) return TRUE;
                     if (hPal)
                     {
@@ -13505,6 +14629,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_FRUSEMASK:
                 {
+                    
                     if (HIWORD(wParam) == LBN_SELCHANGE)
                     {
                         int acpos = (int)SendMessage((HWND)lParam, LB_GETCURSEL, 0, 0);
@@ -13520,6 +14645,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_IDENT:
                 {
+                    
                     if (Ident_Pushed) Ident_Pushed = false;
                     else Ident_Pushed = true;
                     SetSpotButton(Ident_Pushed);
@@ -13527,6 +14653,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_BBSPOT:
                 {
+                    
                     if (BBIdent_Pushed) BBIdent_Pushed = false;
                     else BBIdent_Pushed = true;
                     SetBackgroundMaskSpotButton(BBIdent_Pushed);
@@ -13534,6 +14661,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_COMMON:
                 {
+                    
                     if (Common_Pushed) Common_Pushed = false;
                     else
                     {
@@ -13545,6 +14673,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_ZOOM2X:
                 {
+                    
                     if (MycRom.name[0] == 0 || MycRom.nFrames == 0 || Paste_Mode) return TRUE;
                     if (Zoom_Pushed) Zoom_Pushed = false;
                     else Zoom_Pushed = true;
@@ -13553,6 +14682,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_DELTID:
                 {
+                    
                     if (MycRom.name[0] == 0) return TRUE;
                     MycRom.TriggerID[acFrame] = 0xFFFFFFFF;
                     UpdateTriggerID();
@@ -13560,6 +14690,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_TRIGID:
                 {
+                    
                     if (MycRom.name[0] == 0) return TRUE;
                     if (HIWORD(wParam) == EN_CHANGE)
                     {
@@ -13586,6 +14717,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_NIGHTDAY:
                 {
+                    
                     HBRUSH brush;
                     if (!Night_Mode)
                     {
@@ -13617,22 +14749,26 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_SCROLLFILL:
                 {
+                    
                     SaveAction(true, SA_DRAW);
                     AutoFillScrolling();
                     return TRUE;
                 }
                 case IDC_GENAGIF:
                 {
+                    
                     SaveAnimatedGif();
                     return TRUE;
                 }
                 case IDC_FRAMETEST:
                 {
+                    
                     TestSelectedFrames();
                     return TRUE;
                 }
                 case IDC_DELBG:
                 {
+                    
                     SaveAction(true, SA_DELFRAMEBG);
                     for (UINT ti = 0; ti < nSelFrames; ti++) MycRom.BackgroundID[SelFrames[ti]] = 0xffff;
                     UpdateFrameBG();
@@ -13648,6 +14784,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_SETDUR:
                 {
+                    
                     char tbuf[8];
                     SaveAction(true, SA_DURATION);
                     GetDlgItemTextA(hwTB, IDC_DURATION, tbuf, 8);
@@ -13676,11 +14813,14 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_AUTOCOPY:
                 {
+                    
+                    
                     AutoCopy();
                     return TRUE;
                 }
                 case IDC_UPDATESAME:
                 {
+                    
                     if (MycRom.name[0] == 0) return TRUE;
                     SetDlgItemTextA(hwTB, IDC_UPDATESAME, "Please Wait");
                     Check_SameFrames_Masks_All();
@@ -13691,6 +14831,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_SAMEFRAMELIST:
                 {
+                    
                     int idx = (int)SendMessageA(GetDlgItem(hwTB, IDC_SAMEFRAMELIST), CB_GETCURSEL, 0, 0);
                     if (idx == -1) return TRUE;
                     char tbuf[16];
@@ -13702,6 +14843,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 }
                 case IDC_COPYDYNA:
                 {
+                    
                     if (nSelFrames < 2) return TRUE;
                     UINT fwmfh;
                     UINT16* pdync;
@@ -13739,6 +14881,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 case IDC_OUTTL:
                 case IDC_OUTA:
                 {
+                    
                     if (MycRom.name[0] == 0) return TRUE;
                     if (NSelection == 0) return TRUE;
                     SaveAction(true, SA_DRAW);
@@ -13866,6 +15009,10 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
     return (INT_PTR)FALSE;
 }
 
+
+
+
+
 const char* ButtonDescription2(HWND hOver)
 {
     if (hOver == GetDlgItem(hwTB2, IDC_SAVE)) return (const char*)"Save the Serum project";
@@ -13901,6 +15048,9 @@ const char* ButtonDescription2(HWND hOver)
     return "";
 }
 
+
+
+
 LRESULT CALLBACK ButtonSubclassProc2(HWND hBut, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
     switch (message) {
         case WM_KEYDOWN:
@@ -13920,13 +15070,18 @@ LRESULT CALLBACK ButtonSubclassProc2(HWND hBut, UINT message, WPARAM wParam, LPA
         }
         case WM_MOUSELEAVE:
         {
+            
             SetWindowTextA(hStatus2, "");
             break;
         }
     }
 
+    
     return DefSubclassProc(hBut, message, wParam, lParam);
 }
+
+
+
 INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message)
@@ -13958,11 +15113,13 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
     }
     case WM_CTLCOLORDLG:
     {
+        
         if (Night_Mode) return (INT_PTR)GetStockObject(DKGRAY_BRUSH);
         return (INT_PTR)GetStockObject(GRAY_BRUSH);
     }
     case WM_PAINT:
     {
+        
         if (MycRom.name[0] == 0) return FALSE;
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hDlg, &ps);
@@ -13978,7 +15135,7 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
     }
     case WM_DRAWITEM:
     {
-        // draw the selected colors
+        
         if ((MycRom.name[0] == 0) || (MycRom.nSprites == 0)) return TRUE;
         LPDRAWITEMSTRUCT lpdis = (LPDRAWITEMSTRUCT)lParam;
         UINT tpm;
@@ -14024,6 +15181,7 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
         {
             case IDC_ADDSPRITE:
             {
+                
                 if (MycRom.name[0] == 0) return TRUE;
                 if (MycRom.nSprites == 255) return TRUE;
                 char tbuf[SIZE_SECTION_NAMES];
@@ -14051,13 +15209,14 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                 MycRom.SpriteDetDwords = (UINT32*)realloc(MycRom.SpriteDetDwords, sizeof(UINT32) * (MycRom.nSprites + 1)*MAX_SPRITE_DETECT_AREAS);
                 MycRom.SpriteDetDwordPos = (UINT16*)realloc(MycRom.SpriteDetDwordPos, sizeof(UINT16) * (MycRom.nSprites + 1) * MAX_SPRITE_DETECT_AREAS);
                 MycRom.SpriteDetAreas = (UINT16*)realloc(MycRom.SpriteDetAreas, sizeof(UINT16) * (MycRom.nSprites + 1) * MAX_SPRITE_DETECT_AREAS * 4);
-                for (UINT ti = 0; ti < MAX_SPRITE_DETECT_AREAS; ti++) MycRom.SpriteDetAreas[MycRom.nSprites * 4 * MAX_SPRITE_DETECT_AREAS + ti * 4] = 0xffff; // no area defined
+                for (UINT ti = 0; ti < MAX_SPRITE_DETECT_AREAS; ti++) MycRom.SpriteDetAreas[MycRom.nSprites * 4 * MAX_SPRITE_DETECT_AREAS + ti * 4] = 0xffff; 
                 SendMessage(GetDlgItem(hwTB2, IDC_ISDWORD), BM_SETCHECK, BST_UNCHECKED, 0);
                 acSprite = MycRom.nSprites;
                 CheckDlgButton(hwTB2, IDC_EXTRARES, BST_UNCHECKED);
                 MycRom.nSprites++;
                 for (UINT ti = IDC_COL1; ti <= IDC_COL16; ti++) InvalidateRect(GetDlgItem(hwTB2, ti), NULL, TRUE);
                 UpdateSpriteList();
+                UpdateSpriteList3();
                 if (acSprite >= PreSpriteInStrip + NSpriteToDraw) PreSpriteInStrip = acSprite - NSpriteToDraw + 1;
                 if ((int)acSprite < PreSpriteInStrip) PreSpriteInStrip = acSprite;
                 UpdateSSneeded = true;
@@ -14065,17 +15224,13 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             }
             case IDC_DELSPRITE:
             {
+                
                 if (MycRom.nSprites == 0) return TRUE;
-                char tbuf[256];
-                sprintf_s(tbuf, 256, "Confirm you want to delete the sprite %s, this action can not be undone ?", &MycRP.Sprite_Names[acSprite * SIZE_SECTION_NAMES]);
-                if (MessageBoxA(hSprites, tbuf, "Confirm", MB_YESNO) == IDYES)
-                {
-                    SaveAction(true, SA_SPRITES);
-                    Delete_Sprite(acSprite);
-                    UpdateSpriteList();
-                    UpdateFrameSpriteList();
-                    for (UINT ti = IDC_COL1; ti <= IDC_COL16; ti++) InvalidateRect(GetDlgItem(hwTB2, ti), NULL, TRUE);
-                }
+                SaveAction(true, SA_SPRITES);
+                Delete_Sprite(acSprite);
+                UpdateSpriteList();
+                UpdateFrameSpriteList();
+                for (UINT ti = IDC_COL1; ti <= IDC_COL16; ti++) InvalidateRect(GetDlgItem(hwTB2, ti), NULL, TRUE);
                 if ((acSprite >= MycRom.nSprites) && (MycRom.nSprites > 0)) acSprite = MycRom.nSprites - 1;
                 if (acSprite >= PreSpriteInStrip + NSpriteToDraw) PreSpriteInStrip = acSprite - NSpriteToDraw + 1;
                 if ((int)acSprite < PreSpriteInStrip) PreSpriteInStrip = acSprite;
@@ -14085,6 +15240,7 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             }
             case IDC_SPRITELIST:
             {
+                
                 if (MycRom.name[0] == 0) return TRUE;
                 if (HIWORD(wParam) == CBN_SELCHANGE)
                 {
@@ -14100,6 +15256,7 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             }
             case IDC_ADDTOFRAME:
             {
+                
                 if (MycRom.name[0] == 0) return TRUE;
                 if (NSelection > 0)
                 {
@@ -14170,6 +15327,7 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             }
             case IDC_COPY:
             {
+                
                 if (MycRom.name[0] == 0 || MycRom.nSprites == 0) return TRUE;
                 int minx=1024, miny=1024, maxx=0, maxy=0;
                 UINT16* pspr;
@@ -14239,6 +15397,7 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             }
             case IDC_PASTE:
             {
+                
                 if (MycRom.name[0] == 0 || MycRom.nSprites == 0) return TRUE;
                 UpdateSSneeded = true;
                 MycRP.Sprite_Col_From_Frame[acSprite] = acFrame;
@@ -14319,12 +15478,14 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             }
             case IDC_UNDO:
             {
+                
                 if (MycRom.name[0] == 0) return TRUE;
                 RecoverAction(true);
                 return TRUE;
             }
             case IDC_REDO:
             {
+                
                 if (MycRom.name[0] == 0) return TRUE;
                 RecoverAction(false);
                 return TRUE;
@@ -14346,6 +15507,7 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             case IDC_COL15:
             case IDC_COL16:
             {
+                
                 if (LOWORD(wParam) - IDC_COL1 >= (int)MycRom.noColors) return TRUE;
                 noSprSel = LOWORD(wParam) - IDC_COL1;
                 if (MycRom.name[0] == 0) return TRUE;
@@ -14364,17 +15526,20 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             case IDC_DRAWCIRC:
             case IDC_FILL:
             {
+                
                 Sprite_Mode = (UINT8)(LOWORD(wParam) - IDC_DRAWPOINT);
                 InvalidateRect(hDlg, NULL, TRUE);
                 return TRUE;
             }
             case IDC_FILLED:
             {
+                
                 if (Button_GetCheck(GetDlgItem(hwTB2, IDC_FILLED)) == BST_CHECKED) SpriteFill_Mode = TRUE; else SpriteFill_Mode = FALSE;
                 return TRUE;
             }
             case IDC_SAVE:
             {
+                
                 if (MycRom.name[0] == 0) return TRUE;
                 if (Save_cRom(false, false, (char*)""))
                 {
@@ -14385,12 +15550,14 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             }
             case IDC_DETSPR:
             {
+                
                 if (MycRom.name[0] == 0) return TRUE;
                 acDetSprite = (UINT)SendMessage((HWND)lParam, CB_GETCURSEL, 0, 0);
                 return TRUE;
             }
             case IDC_DELDETSPR:
             {
+                
                 if (MycRom.name[0] == 0) return TRUE;
                 if (MycRom.nSprites == 0) return TRUE;
                 SaveAction(true, SA_SPRITE);
@@ -14399,6 +15566,7 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             }
             case IDC_TOFRAME:
             {
+                
                 if (MycRom.name[0] == 0) return TRUE;
                 if (MycRom.nSprites == 0) return TRUE;
                 acFrame = MycRP.Sprite_Col_From_Frame[acSprite];
@@ -14412,7 +15580,7 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                 UpdateFSneeded = true;
                 UpdateNewacFrame();
                 /*
-                // select the bounding box of the sprite in the Copy_Mask
+                
                 if (MycRP.SpriteRect[4 * acSprite] < 0xffff)
                 {
                     memset(Copy_Mask, 0, MycRom.fWidth * MycRom.fHeight);
@@ -14435,11 +15603,13 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             }
             case IDC_SPRITELIST2:
             {
+                
                 UpdateSpriteList2();
                 return TRUE;
             }
             case IDC_ZOOM2X:
             {
+                
                 if (Zoom_Pushed_Sprite) Zoom_Pushed_Sprite = false;
                 else Zoom_Pushed_Sprite = true;
                 SetZoomSpriteButton(Zoom_Pushed_Sprite);
@@ -14469,6 +15639,7 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             case IDC_DISPEXTRA:
             {
                 if (MycRom.name[0] == 0 || MycRom.nSprites == 0) return TRUE;
+                
                 ExtraResSClicked = !ExtraResSClicked;
                 if (MycRom.isExtraSprite[acSprite] > 0 && ExtraResSClicked) nEditExtraResolutionS = true;
                 else nEditExtraResolutionS = false;
@@ -14538,11 +15709,15 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
     return (INT_PTR)FALSE;
 }
 
+
+
+
+
 const char* ButtonDescription3(HWND hOver)
 {
     if (hOver == GetDlgItem(hwTB3, IDC_BROWSEIMAGE)) return (const char*)"Open an image file (CTRL+O)";
     if (hOver == GetDlgItem(hwTB3, IDC_CBPASTE)) return (const char*)"Use an image file from the clipboard (CTRL+V)";
-    //if (hOver == GetDlgItem(hwTB3, IDC_DELIMAGE)) return (const char*)"Delete the image resource";
+    
     if (hOver == GetDlgItem(hwTB3, IDC_COPY)) return (const char*)"Copy this image to the frame selection (CTRL+C)";
     if (hOver == GetDlgItem(hwTB3, IDC_ZOOMIN)) return (const char*)"Zoom in the image (MOUSE WHEEL UP)";
     if (hOver == GetDlgItem(hwTB3, IDC_ZOOMOUT)) return (const char*)"Zoom out in the image (MOUSE WHEEL DOWN)";
@@ -14563,6 +15738,9 @@ const char* ButtonDescription3(HWND hOver)
     return "";
 }
 
+
+
+
 LRESULT CALLBACK ButtonSubclassProc3(HWND hBut, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
     switch (message) {
     case WM_KEYDOWN:
@@ -14582,28 +15760,47 @@ LRESULT CALLBACK ButtonSubclassProc3(HWND hBut, UINT message, WPARAM wParam, LPA
     }
     case WM_MOUSELEAVE:
     {
+        
         SetWindowTextA(hStatus3, "");
         break;
     }
     }
 
+    
     return DefSubclassProc(hBut, message, wParam, lParam);
 }
+
+
+
+
+
+
+
 
 void ApplyBrightnessContrastAndBlur(cv::Mat mat)
 {
     cv::Mat floatImage;
     mat.convertTo(floatImage, CV_32F);
 
+    
     double alpha = 1 + 0.05 * image_contrast;
     if (alpha == 1.0) alpha = 1.001;
     double beta = 2.5 * image_brightness;
     floatImage = alpha * floatImage + beta;
 
+    
     if (image_blur > 0) cv::blur(floatImage, floatImage, cv::Size(image_blur, image_blur));
 
+    
     floatImage.convertTo(mat, mat.type());
 }
+
+
+
+
+
+
+
 
 UINT CreateTextureFromImage(char* filename, UINT* width, UINT* height)
 {
@@ -14613,7 +15810,7 @@ UINT CreateTextureFromImage(char* filename, UINT* width, UINT* height)
     if (mat.cols % 4 != 0)
     {
         float ratio = (float)mat.cols / (float)mat.rows;
-        int cols = mat.cols - (mat.cols % 4) + 4;
+        int cols = mat.cols - (mat.cols % 4) + 4; 
         int rows = (int)((float)cols / ratio);
         cv::Mat tmat;
         resize(mat, tmat, cv::Size(cols, rows), 0, 0, cv::INTER_CUBIC);
@@ -14621,7 +15818,9 @@ UINT CreateTextureFromImage(char* filename, UINT* width, UINT* height)
         mat = tmat.clone();
         tmat.release();
     }
+    
 
+    
     GLenum format;
     GLenum iformat;
     GLenum type;
@@ -14656,6 +15855,7 @@ UINT CreateTextureFromImage(char* filename, UINT* width, UINT* height)
     }
     *width = image_mat.cols;
     *height = image_mat.rows;
+    
     glfwMakeContextCurrent(glfwimages);
     GLuint texture;
     glGenTextures(1, &texture);
@@ -14664,11 +15864,16 @@ UINT CreateTextureFromImage(char* filename, UINT* width, UINT* height)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    
     glTexImage2D(GL_TEXTURE_2D, 0, format, image_mat.cols, image_mat.rows, 0, iformat, type, image_mat.ptr());
 
     image_loaded = true;
     return texture;
 }
+
+
+
+
 
 UINT CreateTextureFromMat(void)
 {
@@ -14678,7 +15883,7 @@ UINT CreateTextureFromMat(void)
     if (mat.cols % 4 != 0)
     {
         float ratio = (float)mat.cols / (float)mat.rows;
-        int cols = mat.cols - (mat.cols % 4) + 4;
+        int cols = mat.cols - (mat.cols % 4) + 4; 
         int rows = (int)((float)cols / ratio);
         cv::Mat tmat;
         resize(mat, tmat, cv::Size(cols, rows), 0, 0, cv::INTER_CUBIC);
@@ -14686,7 +15891,9 @@ UINT CreateTextureFromMat(void)
         mat = tmat.clone();
         tmat.release();
     }
+    
 
+    
     GLenum format;
     GLenum iformat;
     GLenum type;
@@ -14719,6 +15926,7 @@ UINT CreateTextureFromMat(void)
         image_mat.release();
         return (UINT)-1;
     }
+    
     glfwMakeContextCurrent(glfwimages);
     GLuint texture;
     glGenTextures(1, &texture);
@@ -14727,11 +15935,17 @@ UINT CreateTextureFromMat(void)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    
     glTexImage2D(GL_TEXTURE_2D, 0, format, image_mat.cols, image_mat.rows, 0, iformat, type, image_mat.ptr());
 
     image_loaded = true;
     return texture;
 }
+
+
+
+
+
 
 cv::Mat getFrameAtTime(VideoCapture cap)
 {
@@ -14747,6 +15961,10 @@ cv::Mat getFrameAtTime(VideoCapture cap)
     return frame;
 }
 
+
+
+
+
 void CreateMatFromVideo(VideoCapture video)
 {
     cv::Mat mat = getFrameAtTime(video);
@@ -14755,7 +15973,7 @@ void CreateMatFromVideo(VideoCapture video)
     if (mat.cols % 4 != 0)
     {
         float ratio = (float)mat.cols / (float)mat.rows;
-        int cols = mat.cols - (mat.cols % 4) + 4;
+        int cols = mat.cols - (mat.cols % 4) + 4; 
         int rows = (int)((float)cols / ratio);
         cv::Mat tmat;
         resize(mat, tmat, cv::Size(cols, rows), 0, 0, cv::INTER_CUBIC);
@@ -14763,7 +15981,9 @@ void CreateMatFromVideo(VideoCapture video)
         mat = tmat.clone();
         tmat.release();
     }
+    
 
+    
     GLenum format;
     GLenum iformat;
     GLenum type;
@@ -14797,6 +16017,13 @@ void CreateMatFromVideo(VideoCapture video)
         return;
     }
 }
+
+
+
+
+
+
+
 UINT CreateTextureFromVideo(VideoCapture video, UINT* width, UINT* height)
 {
     cv::Mat mat = getFrameAtTime(video);
@@ -14805,7 +16032,7 @@ UINT CreateTextureFromVideo(VideoCapture video, UINT* width, UINT* height)
     if (mat.cols % 4 != 0)
     {
         float ratio = (float)mat.cols / (float)mat.rows;
-        int cols = mat.cols - (mat.cols % 4) + 4;
+        int cols = mat.cols - (mat.cols % 4) + 4; 
         int rows = (int)((float)cols / ratio);
         cv::Mat tmat;
         resize(mat, tmat, cv::Size(cols, rows), 0, 0, cv::INTER_CUBIC);
@@ -14813,7 +16040,9 @@ UINT CreateTextureFromVideo(VideoCapture video, UINT* width, UINT* height)
         mat = tmat.clone();
         tmat.release();
     }
+    
 
+    
     GLenum format;
     GLenum iformat;
     GLenum type;
@@ -14848,6 +16077,7 @@ UINT CreateTextureFromVideo(VideoCapture video, UINT* width, UINT* height)
     }
     *width = image_mat.cols;
     *height = image_mat.rows;
+    
     glfwMakeContextCurrent(glfwimages);
     GLuint texture;
     glGenTextures(1, &texture);
@@ -14856,11 +16086,16 @@ UINT CreateTextureFromVideo(VideoCapture video, UINT* width, UINT* height)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    
     glTexImage2D(GL_TEXTURE_2D, 0, format, image_mat.cols, image_mat.rows, 0, iformat, type, image_mat.ptr());
 
     image_loaded = true;
     return texture;
 }
+
+
+
+
 
 void CopyImageToSelection(cv::Mat tmp32, cv::Mat tmp64)
 {
@@ -14934,6 +16169,10 @@ void CopyImageToSelection(cv::Mat tmp32, cv::Mat tmp64)
         }
     }
 }
+
+
+
+
 void CopyImageToBackground(cv::Mat tmp32, cv::Mat tmp64)
 {
     if (Button_GetCheck(GetDlgItem(hwTB3, IDC_TOXTRARES)) == BST_CHECKED)
@@ -14982,6 +16221,11 @@ void CopyImageToBackground(cv::Mat tmp32, cv::Mat tmp64)
         }
     }
 }
+
+
+
+
+
 
 void CopyImageTo1Selection(cv::Mat tmp32, cv::Mat tmp64, UINT nofr)
 {
@@ -15076,7 +16320,13 @@ void CopyImageTo1Selection(cv::Mat tmp32, cv::Mat tmp64, UINT nofr)
             }
         }
     }
-}*/
+}
+*/
+
+
+
+
+
 
 cv::Mat Create24bcvMatFrom32bBitmap(HBITMAP hbmp)
 {
@@ -15116,6 +16366,12 @@ cv::Mat Create24bcvMatFrom32bBitmap(HBITMAP hbmp)
     return mat;
 }
 
+
+
+
+
+
+
 GLuint CreateTextureFromClipboard(UINT* pw, UINT* ph)
 {
     if (!IsClipboardFormatAvailable(CF_BITMAP))
@@ -15140,7 +16396,7 @@ GLuint CreateTextureFromClipboard(UINT* pw, UINT* ph)
     if (bm.bmWidth % 4 != 0)
     {
         float ratio = (float)bm.bmWidth / (float)bm.bmHeight;
-        int cols = bm.bmWidth - (bm.bmWidth % 4) + 4;
+        int cols = bm.bmWidth - (bm.bmWidth % 4) + 4; 
         int rows = (int)((float)cols / ratio);
         HDC hdc = GetDC(NULL);
         HDC hdcOrig = CreateCompatibleDC(hdc);
@@ -15197,15 +16453,26 @@ GLuint CreateTextureFromClipboard(UINT* pw, UINT* ph)
     glTexImage2D(GL_TEXTURE_2D, 0, format, bm.bmWidth , bm.bmHeight , 0, iformat, GL_UNSIGNED_BYTE, lpBitmap);
     free(lpBitmap);
     image_loaded = true;
+    
     CloseClipboard();
     DeleteObject(hBmp);
     return textureID;
 }
 
+
+
+
+
+
 long HMSFToLong(UINT8 h, UINT8 m, UINT8 s, UINT8 f)
 {
     return (f + image_video_frame_rate * (s + 60 * m + 3600 * h));
 }
+
+
+
+
+
 void LongToHMSF(long dpos, UINT8* ph, UINT8* pm, UINT8* ps, UINT8* pf)
 {
     *ph = (INT8)(dpos / (3600 * image_video_frame_rate));
@@ -15213,6 +16480,10 @@ void LongToHMSF(long dpos, UINT8* ph, UINT8* pm, UINT8* ps, UINT8* pf)
     *ps = (INT8)((dpos - (*ph * 3600 + *pm * 60) * image_video_frame_rate) / image_video_frame_rate);
     *pf = (INT8)(dpos - (*ph * 3600 + *pm * 60 + *ps) * image_video_frame_rate);
 }
+
+
+
+
 
 void UpdateHMSF(HWND hDlg)
 {
@@ -15241,6 +16512,10 @@ void UpdateHMSF(HWND hDlg)
         SendMessage(hS, TBM_SETPOS, TRUE, image_video_frame);
     }
 }
+
+
+
+
 
 void UpdateHMSFfromSlider(HWND hDlg)
 {
@@ -15273,6 +16548,11 @@ void UpdateHMSFfromSlider(HWND hDlg)
     TxImage = CreateTextureFromVideo(image_video_cap, &width_image, &height_image);
 }
 
+
+
+
+
+
 void VideoMove(HWND hDlg, long direction)
 {
     long addtime;
@@ -15301,6 +16581,11 @@ void VideoMove(HWND hDlg, long direction)
     }
     TxImage = CreateTextureFromVideo(image_video_cap, &width_image, &height_image);
 }
+
+
+
+
+
 void BubbleSort(UINT* arr, UINT n)
 {
     UINT temp;
@@ -15310,6 +16595,7 @@ void BubbleSort(UINT* arr, UINT n)
         {
             if (arr[tj] > arr[tj + 1])
             {
+                
                 temp = arr[tj];
                 arr[tj] = arr[tj + 1];
                 arr[tj + 1] = temp;
@@ -15317,6 +16603,10 @@ void BubbleSort(UINT* arr, UINT n)
         }
     }
 }
+
+
+
+
 
 void ScrollCopy(HWND hDlg)
 {
@@ -15336,6 +16626,7 @@ void ScrollCopy(HWND hDlg)
         MessageBoxA(hImages, "Select at least a resolution as destination", "Faile" ,MB_OK);
         return;
     }
+    
     UINT tSelFrames[MAX_SEL_FRAMES];
     for (UINT ti = 0; ti < nSelFrames; ti++) tSelFrames[ti] = SelFrames[ti];
     BubbleSort(tSelFrames, nSelFrames);
@@ -15356,11 +16647,14 @@ void ScrollCopy(HWND hDlg)
             }
         }
     }
-    UINT nfr = derframe - preframe + 1;*/
+    UINT nfr = derframe - preframe + 1;
+    */
     UINT8* image = NULL;
-    float ratio = (float)width_image / (float)image_sizeW;
+    float ratio = (float)width_image / (float)image_sizeW; 
+    
     float crop_minx = ratio * min(crop_ioffsetx, crop_foffsetx), crop_miny = ratio * min(crop_ioffsety, crop_foffsety);
     float crop_maxx = ratio * max(crop_ioffsetx + crop_iOsizeW - 1, crop_foffsetx + crop_fOsizeW - 1), crop_maxy = ratio * max(crop_ioffsety + crop_iOsizeH - 1, crop_foffsety + crop_fOsizeH - 1);
+    
     image = (UINT8*)malloc(WiSelection * HiSelection);
     if (!image)
     {
@@ -15370,10 +16664,10 @@ void ScrollCopy(HWND hDlg)
     SaveAction(true, SA_DRAW);
     EnableWindow(GetDlgItem(hDlg, IDC_SCROLLCOPY), FALSE);
 
-    float crop_isemiw = ratio * crop_iOsizeW / 2, crop_isemih = ratio * crop_iOsizeH / 2;
-    float crop_fsemiw = ratio * crop_fOsizeW / 2, crop_fsemih = ratio * crop_fOsizeH / 2;
-    float centreix = ratio * crop_ioffsetx + crop_isemiw, centreiy = ratio * crop_ioffsety + crop_isemih;
-    float centrefx = ratio * crop_foffsetx + crop_fsemiw, centrefy = ratio * crop_foffsety + crop_fsemih;
+    float crop_isemiw = ratio * crop_iOsizeW / 2, crop_isemih = ratio * crop_iOsizeH / 2; 
+    float crop_fsemiw = ratio * crop_fOsizeW / 2, crop_fsemih = ratio * crop_fOsizeH / 2; 
+    float centreix = ratio * crop_ioffsetx + crop_isemiw, centreiy = ratio * crop_ioffsety + crop_isemih; 
+    float centrefx = ratio * crop_foffsetx + crop_fsemiw, centrefy = ratio * crop_foffsety + crop_fsemih; 
     for (UINT ti = 0; ti < nSelFrames; ti++)
     {
         if (Button_GetCheck(GetDlgItem(hwTB3, IDC_TOXTRARES)) == BST_CHECKED)
@@ -15381,10 +16675,10 @@ void ScrollCopy(HWND hDlg)
             MycRom.isExtraFrame[SelFrames[ti]] = 1;
             CheckDlgButton(hwTB, IDC_EXTRARES, BST_CHECKED);
         }
-        float accentrex = centreix + (centrefx - centreix) * (float)ti / (float)(nSelFrames - 1);
-        float accentrey = centreiy + (centrefy - centreiy) * (float)ti / (float)(nSelFrames - 1);
-        float acsemiw = crop_isemiw + (crop_fsemiw - crop_isemiw) * (float)ti / (float)(nSelFrames - 1);
-        float acsemih = crop_isemih + (crop_fsemih - crop_isemih) * (float)ti / (float)(nSelFrames - 1);
+        float accentrex = centreix + (centrefx - centreix) * (float)ti / (float)(nSelFrames - 1); 
+        float accentrey = centreiy + (centrefy - centreiy) * (float)ti / (float)(nSelFrames - 1); 
+        float acsemiw = crop_isemiw + (crop_fsemiw - crop_isemiw) * (float)ti / (float)(nSelFrames - 1); 
+        float acsemih = crop_isemih + (crop_fsemih - crop_isemih) * (float)ti / (float)(nSelFrames - 1); 
         cv::Rect croprect((int)(accentrex - acsemiw), (int)(accentrey - acsemih), (int)(2 * acsemiw), (int)(2 * acsemih));
         cv::Mat croppedimg = image_mat(croprect);
         cv::Mat tmp64;
@@ -15488,6 +16782,9 @@ void strtrim(char* str, int maxlength)
     delete tstr;
 }
 
+
+
+
 void InitCropZoneList(void)
 {
     SendMessage(GetDlgItem(hwTB3, IDC_CZONELIST), CB_RESETCONTENT, 0, 0);
@@ -15495,12 +16792,21 @@ void InitCropZoneList(void)
         SendMessageA(GetDlgItem(hwTB3, IDC_CZONELIST), CB_ADDSTRING, 0, (LPARAM)&MycRP.ImagePosSaveName[64*ti]);
 }
 POINT g_ptPicControl;
+
+
+
+
+
+
+
+
 INT_PTR CALLBACK Toolbar_Proc3(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message)
     {
         case WM_CTLCOLORDLG:
         {
+            
             if (Night_Mode) return (INT_PTR)GetStockObject(DKGRAY_BRUSH);
             return (INT_PTR)GetStockObject(GRAY_BRUSH);
         }
@@ -15526,7 +16832,7 @@ INT_PTR CALLBACK Toolbar_Proc3(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             SetWindowSubclass(GetDlgItem(hDlg, IDC_PREV), ButtonSubclassProc3, 0, 0);
             SetWindowSubclass(GetDlgItem(hDlg, IDC_NEXT), ButtonSubclassProc3, 0, 0);
             EnableWindow(GetDlgItem(hDlg, IDC_VIDEOSLIDER), FALSE);
-            //EnableWindow(GetDlgItem(hDlg, IDC_TIMESPIN), FALSE);
+            
             EnableWindow(GetDlgItem(hDlg, IDC_HOUR), FALSE);
             EnableWindow(GetDlgItem(hDlg, IDC_MINUTE), FALSE);
             EnableWindow(GetDlgItem(hDlg, IDC_SECOND), FALSE);
@@ -15612,6 +16918,7 @@ INT_PTR CALLBACK Toolbar_Proc3(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             {
                 case IDC_BROWSEIMAGE:
                 {
+                    
                     glfwMakeContextCurrent(glfwimages);
                     OPENFILENAMEA ofn;
                     char szFile[260];
@@ -15711,7 +17018,7 @@ INT_PTR CALLBACK Toolbar_Proc3(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                             image_video_hour = image_video_minute = image_video_second = image_video_frame = 0;
                             TxImage = CreateTextureFromVideo(image_video_cap, &width_image, &height_image);
                             EnableWindow(GetDlgItem(hDlg, IDC_VIDEOSLIDER), TRUE);
-                            //EnableWindow(GetDlgItem(hDlg, IDC_TIMESPIN), TRUE);
+                            
                             EnableWindow(GetDlgItem(hDlg, IDC_HOUR), TRUE);
                             EnableWindow(GetDlgItem(hDlg, IDC_MINUTE), TRUE);
                             EnableWindow(GetDlgItem(hDlg, IDC_SECOND), TRUE);
@@ -15846,7 +17153,7 @@ INT_PTR CALLBACK Toolbar_Proc3(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                         if (MycRom.nBackgrounds == 0) return TRUE;
                         SaveAction(true, SA_REIMPORTBACKGROUND);
                     }
-                    float ratio = (float)width_image / (float)image_sizeW;
+                    float ratio = (float)width_image / (float)image_sizeW; 
                     if ((!image_source_format_video) || (nSelFrames == 1) || (SendMessage(GetDlgItem(hDlg, IDC_CURFRAMEALL), BM_GETCHECK, 0, 0) == BST_CHECKED) || (Button_GetCheck(GetDlgItem(hwTB3, IDC_IMGTOBG)) == BST_CHECKED))
                     {
                         EnableWindow(GetDlgItem(hDlg, IDC_COPY), FALSE);
@@ -15869,6 +17176,8 @@ INT_PTR CALLBACK Toolbar_Proc3(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                     }
                     else
                     {
+                        
+                        
                         EnableWindow(GetDlgItem(hDlg, IDC_COPY), FALSE);
                         unsigned int preframe = acFrame, derframe = acFrame;
                         bool frfound = true;
@@ -15897,7 +17206,7 @@ INT_PTR CALLBACK Toolbar_Proc3(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                         }
                         double acposs = (double)HMSFToLong(image_video_hour, image_video_minute, image_video_second, image_video_frame);
                         double finposs = (double)HMSFToLong(image_video_nhours, image_video_nminutes, image_video_nseconds, image_video_nframes);
-                        double msstep = image_video_frame_rate / 1000.0; // frames/ms
+                        double msstep = image_video_frame_rate / 1000.0; 
                         double interv;
                         UINT8 ih = image_video_hour, im = image_video_minute, is = image_video_second, ifr = image_video_frame;
                         UINT iinterv;
@@ -15936,10 +17245,10 @@ INT_PTR CALLBACK Toolbar_Proc3(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                             cv::Mat tmp32;
                             cv::resize(croppedimg, tmp32, cv::Size(WiSelection / 2, HiSelection / 2), 0, 0, ImgResizeFilter);
                             croppedimg.release();
-                            //unsigned char palette[64 * 3];
-                            //unsigned char image[256 * 64];
-                            //if (image_ncolsel > NiSelection) image_ncolsel = NiSelection;
-                            //ReduceRGB24ToNColorsImage(tmp, image_ncolsel, palette, image);
+                            
+                            
+                            
+                            
                             CopyImageTo1Selection(tmp32, tmp64, preframe);
                             tmp32.release();
                             tmp64.release();
@@ -16056,8 +17365,8 @@ INT_PTR CALLBACK Toolbar_Proc3(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                         MessageBoxA(hwTB3, "Maximum number of crop zone saves reached.", "Failed", MB_OK);
                         return TRUE;
                     }
-                    int posl = MycRP.nImagePosSaves;// (int)SendMessage(GetDlgItem(hwTB3, IDC_CZONELIST), CB_GETCURSEL, 0, 0
-                    //if (posl == -1) return TRUE;
+                    int posl = MycRP.nImagePosSaves;
+                    
                     GetDlgItemTextA(hwTB3, IDC_CZONENAME, &MycRP.ImagePosSaveName[posl * 64], 63);
                     strtrim(&MycRP.ImagePosSaveName[posl * 64], 64);
                     if (MycRP.ImagePosSaveName[posl * 64] == 0)
@@ -16164,19 +17473,20 @@ INT_PTR CALLBACK Toolbar_Proc3(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 void Calc_Resize_BG(void)
 {
     if (!glfwBG) return;
+    
     glfwMakeContextCurrent(glfwBG);
     RECT winrect;
     GetClientRect(hBG, &winrect);
     ScrW4 = winrect.right;
     ScrH4 = winrect.bottom;
-    NBGToDraw = (int)((float)(ScrW4 - FRAME_STRIP_W_MARGIN) / (float)(256 + FRAME_STRIP_W_MARGIN));
-    BS_LMargin = (ScrW4 - (NBGToDraw * (FRAME_STRIP_W_MARGIN + 256) + FRAME_STRIP_W_MARGIN)) / 2;
+    NBGToDraw = (int)((float)(ScrW4 - FRAME_STRIP_W_MARGIN) / (float)(256 + FRAME_STRIP_W_MARGIN)); 
+    BS_LMargin = (ScrW4 - (NBGToDraw * (FRAME_STRIP_W_MARGIN + 256) + FRAME_STRIP_W_MARGIN)) / 2; 
     if (MycRom.name[0])
     {
         if (MycRom.fWidth == 192)
         {
-            NBGToDraw = (int)((float)(ScrW4 - FRAME_STRIP_W_MARGIN) / (float)(192 + FRAME_STRIP_W_MARGIN));
-            BS_LMargin = (ScrW4 - (NBGToDraw * (FRAME_STRIP_W_MARGIN + 192) + FRAME_STRIP_W_MARGIN)) / 2; // calculate the left and right margin in the strip
+            NBGToDraw = (int)((float)(ScrW4 - FRAME_STRIP_W_MARGIN) / (float)(192 + FRAME_STRIP_W_MARGIN)); 
+            BS_LMargin = (ScrW4 - (NBGToDraw * (FRAME_STRIP_W_MARGIN + 192) + FRAME_STRIP_W_MARGIN)) / 2; 
         }
     }
     int thei = winrect.bottom - (TOOLBAR_HEIGHT + 20) - FRAME_STRIP_HEIGHT - statusBarHeight - 20;
@@ -16189,7 +17499,7 @@ void Calc_Resize_BG(void)
     if (((float)twid / (float)thei) > mul) twid = thei * mul; else
     {
         thei = twid / mul;
-        twid = thei * mul;
+        twid = thei * mul; 
     }
     if (MycRom.name[0])
     {
@@ -16204,14 +17514,14 @@ void Calc_Resize_BG(void)
             fh = MycRom.fHeight;
             fw = MycRom.fWidth;
         }
-        BG_zoom = ((float)thei / (float)fh);
+        BG_zoom = ((float)thei / (float)fh); 
         twid = (int)(BG_zoom * fw);
         thei = (int)(BG_zoom * fh);
     }
     else
     {
-        BG_zoom = ((float)thei / (float)32);
-        twid = (int)(BG_zoom * 128);
+        BG_zoom = ((float)thei / (float)32); 
+        twid = (int)(BG_zoom * 128); 
         thei = (int)(BG_zoom * 32);
     }
     glfwSetWindowSize(glfwBG, twid, thei);
@@ -16234,14 +17544,15 @@ LRESULT CALLBACK BGProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
     /*case WM_COMMAND:
     {
         int wmId = LOWORD(wParam);
-        // Analyse les sélections de menu :
+        
         switch (wmId)
         {
         default:
             return DefWindowProc(hWin, message, wParam, lParam);
         }
         break;
-    }*/
+    }
+    */
     case WM_MOUSEWHEEL:
     {
         if (MycRom.name[0] == 0) return TRUE;
@@ -16258,8 +17569,8 @@ LRESULT CALLBACK BGProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
         int valx = GetSystemMetrics(SM_CXFULLSCREEN) + 15;
         int valy = GetSystemMetrics(SM_CYFULLSCREEN) + 25;
         MINMAXINFO* mmi = (MINMAXINFO*)lParam;
-        mmi->ptMinTrackSize.x = 1152 + 16;
-        mmi->ptMinTrackSize.y = 546 + 59;
+        mmi->ptMinTrackSize.x = 1152 + 16; 
+        mmi->ptMinTrackSize.y = 546 + 59; 
         mmi->ptMaxTrackSize.x = valx;
         mmi->ptMaxTrackSize.y = valy;
         return 0;
@@ -16273,7 +17584,9 @@ LRESULT CALLBACK BGProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
             UpdateBSneeded = true;
             int cxClient = LOWORD(lParam);
             int cyClient = HIWORD(lParam);
+            
             SendMessage(hBStatus, WM_SIZE, 0, MAKELPARAM(cxClient, cyClient));
+            
             RECT rcStatusBar;
             GetWindowRect(hBStatus, &rcStatusBar);
             int statusBarHeight = rcStatusBar.bottom - rcStatusBar.top;
@@ -16303,6 +17616,10 @@ LRESULT CALLBACK BGProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
     return 0;
 }
 
+
+
+
+
 const char* ButtonDescription4(HWND hOver)
 {
     if (hOver == GetDlgItem(hwTB4, IDC_IMPORT)) return (const char*)"Create a new background importing frame, palette and color rotation from the current displayed frame";
@@ -16315,6 +17632,9 @@ const char* ButtonDescription4(HWND hOver)
     if (hOver == GetDlgItem(hwTB4, IDC_BGLIST)) return (const char*)"List of frames using this background";
     return "";
 }
+
+
+
 
 LRESULT CALLBACK ButtonSubclassProc4(HWND hBut, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
     switch (message) {
@@ -16335,13 +17655,18 @@ LRESULT CALLBACK ButtonSubclassProc4(HWND hBut, UINT message, WPARAM wParam, LPA
         }
         case WM_MOUSELEAVE:
         {
+            
             SetWindowTextA(hBStatus, "");
             break;
         }
     }
 
+    
     return DefSubclassProc(hBut, message, wParam, lParam);
 }
+
+
+
 
 void Predraw_BG_For_Rotations(unsigned int noBG)
 {
@@ -16378,9 +17703,9 @@ void Predraw_BG_For_Rotations(unsigned int noBG)
             if (isColorInRotation(pBG[tj * fw + ti], acFrame, isextra, &norot, &norotcol))
             {
                 RotationsInBG[tj * fw + ti][0] = (UINT16)norot;
-                RotationsInBG[tj * fw + ti][1] = norotcol;
+                RotationsInBG[tj * fw + ti][1] = norotcol; 
             }
-            else RotationsInBG[tj * fw + ti][0] = 0xffff;
+            else RotationsInBG[tj * fw + ti][0] = 0xffff; 
         }
     }
 }
@@ -16391,8 +17716,12 @@ void CheckAcBGChanged(void)
     prevEditExtraResolutionB = nEditExtraResolutionB;
     Predraw_BG_For_Rotations(acBG);
 }
+
+
+
 void Draw_Background(GLFWwindow* glfwin, float zoom, UINT16 noBG, unsigned int x, unsigned int y, unsigned int clipw, unsigned int cliph)
 {
+    
     if (MycRom.nBackgrounds == 0) return;
     if (noBG >= MycRom.nBackgrounds)
     {
@@ -16441,6 +17770,7 @@ void Draw_Background(GLFWwindow* glfwin, float zoom, UINT16 noBG, unsigned int x
         pBG = &MycRom.BackgroundFrames[noBG * fw * fh];
         pcolrot = &MycRom.ColorRotations[acFrame * MAX_COLOR_ROTATIONN * MAX_LENGTH_COLOR_ROTATION];
     }
+    
     DWORD actime = timeGetTime();
     for (UINT ti = 0; ti < MAX_COLOR_ROTATIONN; ti++)
     {
@@ -16454,18 +17784,21 @@ void Draw_Background(GLFWwindow* glfwin, float zoom, UINT16 noBG, unsigned int x
             }
         }
     }
+    
     for (unsigned int tj = 0; tj < fh; tj++)
     {
         for (unsigned int ti = 0; ti < fw; ti++)
         {
-            UINT16 norot = RotationsInBG[tj * fw + ti][0];
+            UINT16 norot = RotationsInBG[tj * fw + ti][0]; 
             if (norot < 0xffff)
             {
-                UINT16 nocolinrot = RotationsInBG[tj * fw + ti][1];
-                UINT16 collength = pcolrot[norot * MAX_LENGTH_COLOR_ROTATION];
+                
+                UINT16 nocolinrot = RotationsInBG[tj * fw + ti][1]; 
+                UINT16 collength = pcolrot[norot * MAX_LENGTH_COLOR_ROTATION]; 
                 SetRenderDrawColor565(pcolrot[norot * MAX_LENGTH_COLOR_ROTATION +
-                    (nocolinrot + acrotShift[norot]) % collength + 2], 255);
+                    (nocolinrot + acrotShift[norot]) % collength + 2], 255); 
             }
+            
             else SetRenderDrawColor565(pBG[tj * fw + ti], 255);
             if (clipw != 0) RenderDrawPointClip(glfwin, x + ti * zoom, y + tj * zoom, x + clipw - 1, y + cliph - 1, zoom);
             else RenderDrawPoint(glfwin, x + ti * zoom, y + tj * zoom, zoom);
@@ -16474,8 +17807,12 @@ void Draw_Background(GLFWwindow* glfwin, float zoom, UINT16 noBG, unsigned int x
     glEnd();
 }
 
+
+
+
 void Draw_BG_Strip(void)
 {
+    
     float RTexCoord = (float)ScrW4 / (float)MonWidth;
     glfwMakeContextCurrent(glfwBGstrip);
     glDisable(GL_BLEND);
@@ -16498,13 +17835,21 @@ void Draw_BG_Strip(void)
     glEnd();
 }
 
+
+
+
 void CalcPosSlider4(void)
 {
     float div = (float)MycRom.nBackgrounds / (float)SliderWidth4;
     PosSlider4 = (int)((float)PreBGInStrip / div);
 }
+
+
+
+
 void Get_BG_Strip_Line_Color(UINT pos)
 {
+    
     UINT corframe = (int)((float)(pos - FRAME_STRIP_SLIDER_MARGIN) * (float)MycRom.nBackgrounds / (float)SliderWidth4);
     UINT cornextframe = (int)((float)(pos - FRAME_STRIP_SLIDER_MARGIN + 1) * (float)MycRom.nBackgrounds / (float)SliderWidth4);
     if (cornextframe == corframe) cornextframe++;
@@ -16526,9 +17871,14 @@ void Get_BG_Strip_Line_Color(UINT pos)
         draw_color[2] = UnselColor[2];
     }
 }
+
+
+
 void Background_Strip_Update(void)
 {
+    
     if (pBGStrip) memset(pBGStrip, 0, MonWidth * FRAME_STRIP_HEIGHT * 4);
+    
     if (MycRom.name[0] == 0 || MycRom.nBackgrounds == 0) return;
     bool doublepixsize = true;
     UINT fw, fh;
@@ -16541,12 +17891,14 @@ void Background_Strip_Update(void)
     if (MycRom.fWidth == 192) fwid = 192;
     for (int ti = 0; ti < (int)NBGToDraw; ti++)
     {
+        
         if (ExtraResBClicked && MycRom.isExtraBackground[PreBGInStrip + ti] > 0)
         {
             fw = MycRom.fWidthX;
             fh = MycRom.fHeightX;
             pfr = &MycRom.BackgroundFramesX[(PreBGInStrip + ti) * fw * fh];
         }
+        
         else
         {
             fw = MycRom.fWidth;
@@ -16559,6 +17911,7 @@ void Background_Strip_Update(void)
             pstrip += (fwid + FRAME_STRIP_W_MARGIN) * 4;
             continue;
         }
+        
         if (PreBGInStrip + ti == acBG)
         {
             frFrameColor[0] = acColor[0];
@@ -16571,6 +17924,7 @@ void Background_Strip_Update(void)
             frFrameColor[1] = UnselColor[1];
             frFrameColor[2] = UnselColor[2];
         }
+        
         for (int tj = -1; tj < fwid + 1; tj++)
         {
             *(pstrip + tj * 4 + 64 * addrow) = *(pstrip - addrow + tj * 4) = frFrameColor[0];
@@ -16585,6 +17939,7 @@ void Background_Strip_Update(void)
             *(pstrip + tj * addrow + fwid * 4 + 2) = *(pstrip - 4 + tj * addrow + 2) = frFrameColor[2];
             *(pstrip + tj * addrow + fwid * 4 + 3) = *(pstrip - 4 + tj * addrow + 3) = 255;
         }
+        
         psmem = pstrip;
         for (UINT tj = 0; tj < fh; tj++)
         {
@@ -16609,6 +17964,7 @@ void Background_Strip_Update(void)
         }
         pstrip = psmem + (fwid + FRAME_STRIP_W_MARGIN) * 4;
     }
+    
     for (UINT ti = 0; ti < NBGToDraw; ti++)
     {
         SetRenderDrawColor(128, 128, 128, 255);
@@ -16621,6 +17977,7 @@ void Background_Strip_Update(void)
             Draw_Raw_Digit(10, BS_LMargin + FRAME_STRIP_W_MARGIN + ti * (fwid + FRAME_STRIP_W_MARGIN), FRAME_STRIP_H_MARGIN - RAW_DIGIT_H - 3, pBGStrip, ScrW4, FRAME_STRIP_H_MARGIN);
         }
     }
+    
     for (UINT ti = addrow * (FRAME_STRIP_HEIGHT - FRAME_STRIP_H_MARGIN / 2 - 5); ti < addrow * (FRAME_STRIP_HEIGHT - FRAME_STRIP_H_MARGIN / 2 + 7); ti++)
     {
         pBGStrip[ti] = 50;
@@ -16662,16 +18019,24 @@ void Background_Strip_Update(void)
     glfwMakeContextCurrent(glfwBGstrip);
     glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, TxBGStrip[!(acBSText)]);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, ScrW4, FRAME_STRIP_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, pBGStrip); //RGBA with 4 bytes alignment for efficiency
-    acBSText = !(acBSText);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, ScrW4, FRAME_STRIP_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, pBGStrip); 
+    acBSText = !(acBSText); 
 }
+
+
+
 void CheckPosBG(void)
 {
     if (acBG < PreBGInStrip) PreBGInStrip = acBG;
     else if (acBG >= PreBGInStrip + NBGToDraw) PreBGInStrip = acBG - NBGToDraw + 1;
 }
+
+
+
+
 void AddBackground(void)
 {
+    
     SaveAction(true, SA_ADDBACKGROUND);
     MycRom.isExtraBackground = (UINT8*)realloc(MycRom.isExtraBackground, MycRom.nBackgrounds + 1);
     MycRom.BackgroundFrames = (UINT16*)realloc(MycRom.BackgroundFrames, (MycRom.nBackgrounds + 1) * MycRom.fWidth * MycRom.fHeight * sizeof(UINT16));
@@ -16687,6 +18052,9 @@ void AddBackground(void)
     InitColorRotation2();
     UpdateBSneeded = true;
 }
+
+
+
 void ReimportBackground(void)
 {
     if (ExtraResBClicked && MycRom.isExtraFrame[acFrame] == 0)
@@ -16709,6 +18077,9 @@ void ReimportBackground(void)
     InitColorRotation2();
     UpdateBSneeded = true;
 }
+
+
+
 void CopyBackground(void)
 {
     if (ExtraResBClicked && MycRom.isExtraBackground[acBG] == 0)
@@ -16737,6 +18108,9 @@ void CopyBackground(void)
     InitColorRotation();
     UpdateFSneeded = true;
 }
+
+
+
 void DeleteBackground(void)
 {
     if (ExtraResBClicked && MycRom.isExtraBackground[acBG] == 0)
@@ -16768,6 +18142,9 @@ void DeleteBackground(void)
     UpdateBSneeded = true;
     UpdateFSneeded = true;
 }
+
+
+
 void SetBackground(void)
 {
     if (MycRom.nBackgrounds == 0) return;
@@ -16779,6 +18156,7 @@ void SetBackground(void)
     SaveAction(true,SA_SETBACKGROUND);
     UINT fw, fh;
     UINT8* pbgm;
+    
     if (nEditExtraResolutionB)
     {
         if (Copy_Content != 2)
@@ -16804,14 +18182,17 @@ void SetBackground(void)
 
     for (UINT tk = 0; tk < nSelFrames; tk++)
     {
-        MycRom.BackgroundID[SelFrames[tk]] = acBG;
+        MycRom.BackgroundID[SelFrames[tk]] = acBG; 
         for (UINT tj = 0; tj < fh * fw; tj++)
         {
-            pbgm[tj] = Copy_Mask[tj];
+            pbgm[tj] = Copy_Mask[tj]; 
         }
     }
     InitColorRotation();
 }
+
+
+
 void UpdateFrameBG(void)
 {
     if (MycRom.name[0] == 0) return;
@@ -16823,6 +18204,9 @@ void UpdateFrameBG(void)
         SetDlgItemTextA(hwTB, IDC_BGNB, tbuf);
     }
 }
+
+
+
 INT_PTR CALLBACK Toolbar_Proc4(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message)
@@ -16951,12 +18335,14 @@ INT_PTR CALLBACK Toolbar_Proc4(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                 case IDC_DISPEXTRA:
                 {
                     if (MycRom.name[0] == 0 || MycRom.nBackgrounds == 0) return TRUE;
+                    
                     ExtraResBClicked = !ExtraResBClicked;
                     if (MycRom.isExtraBackground[acBG] > 0 && ExtraResBClicked) nEditExtraResolutionB = true;
                     else nEditExtraResolutionB = false;
                     FreeCopyMasks();
                     UpdateBSneeded = true;
                     UpdateFSneeded = true;
+                    
                     Calc_Resize_Image();
                     Calc_Resize_BG();
                     InitColorRotation();
@@ -17040,7 +18426,7 @@ bool CreateToolbar4(void)
     SetIcon(GetDlgItem(hwTB4, IDC_SETBG), IDI_SETBG);
     SetIcon(GetDlgItem(hwTB4, IDC_UNDO), IDI_UNDO);
     SetIcon(GetDlgItem(hwTB4, IDC_REDO), IDI_REDO);
-//    SetIcon(GetDlgItem(hwTB4, IDC_ZOOM2X), IDI_ZOOM2X);
+
     SetWindowLong(GetDlgItem(hwTB4, IDC_STRY6), GWL_STYLE, WS_BORDER | WS_CHILD | WS_VISIBLE | SS_BLACKRECT);
     SetWindowPos(GetDlgItem(hwTB4, IDC_STRY6), 0, 0, 0, 5, 100, SWP_NOMOVE | SWP_NOZORDER);
     SetWindowLong(GetDlgItem(hwTB4, IDC_STRY7), GWL_STYLE, WS_BORDER | WS_CHILD | WS_VISIBLE | SS_BLACKRECT);
@@ -17062,6 +18448,9 @@ bool CreateToolbar4(void)
     return true;
 }
 
+
+
+
 void mouse_scroll_callback4(GLFWwindow* window, double xoffset, double yoffset)
 {
     if (MycRom.name[0] == 0) return;
@@ -17072,6 +18461,9 @@ void mouse_scroll_callback4(GLFWwindow* window, double xoffset, double yoffset)
     if (PreBGInStrip >= (int)MycRom.nBackgrounds) PreBGInStrip = (int)MycRom.nBackgrounds - 1;
     UpdateBSneeded = true;
 }
+
+
+
 void mouse_button_callback4(GLFWwindow* window, int button, int action, int mods)
 {
     double xpos, ypos;
@@ -17080,9 +18472,11 @@ void mouse_button_callback4(GLFWwindow* window, int button, int action, int mods
 
     if (MycRom.name[0] != 0)
     {
+        
         if ((button == GLFW_MOUSE_BUTTON_LEFT) && (action == GLFW_RELEASE)) MouseBGSliderLPressed = false;
         if ((button == GLFW_MOUSE_BUTTON_LEFT) && (action == GLFW_PRESS))
         {
+            
             if ((yipos >= FRAME_STRIP_HEIGHT - FRAME_STRIP_H_MARGIN / 2 - 5) && (yipos <= FRAME_STRIP_HEIGHT - FRAME_STRIP_H_MARGIN / 2 + 6))
             {
                 if ((xipos >= FRAME_STRIP_SLIDER_MARGIN) && (xipos <= (int)ScrW4 - FRAME_STRIP_SLIDER_MARGIN))
@@ -17091,13 +18485,14 @@ void mouse_button_callback4(GLFWwindow* window, int button, int action, int mods
                 }
                 return;
             }
+            
             UINT wid = 256;
             if (MycRom.fWidth == 192) wid = 192;
             if ((yipos >= FRAME_STRIP_H_MARGIN) && (yipos < FRAME_STRIP_H_MARGIN + 128))
             {
                 if ((xipos >= (int)BS_LMargin + FRAME_STRIP_W_MARGIN) && (xipos <= (int)ScrW4 - (int)BS_LMargin - FRAME_STRIP_W_MARGIN))
                 {
-                    if ((xipos - BS_LMargin - FRAME_STRIP_W_MARGIN) % (wid + FRAME_STRIP_W_MARGIN) < wid) // check that we are not between the frames
+                    if ((xipos - BS_LMargin - FRAME_STRIP_W_MARGIN) % (wid + FRAME_STRIP_W_MARGIN) < wid) 
                     {
                         SaveAction(true, SA_SELBACKGROUND);
                         acBG = PreBGInStrip + (xipos - BS_LMargin - FRAME_STRIP_W_MARGIN) / (wid + FRAME_STRIP_W_MARGIN);
@@ -17127,9 +18522,9 @@ bool bg_CreateWindow(void)
     wcex.hIcon = LoadIcon(hInst, MAKEINTRESOURCE(IDI_CROM));
     wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-    wcex.lpszMenuName = NULL;// MAKEINTRESOURCEW(IDC_COLORIZINGDMD);
+    wcex.lpszMenuName = NULL;
     wcex.lpszClassName = L"BGClass";
-    wcex.hIconSm = NULL; // LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
+    wcex.hIconSm = NULL; 
     if (!RegisterClassEx(&wcex))
     {
         return false;
@@ -17249,9 +18644,12 @@ void CheckAccelerators(void)
         {
             if (GetKeyState('Z') & 0x8000 && GetKeyState(VK_SHIFT) & 0x8000 && isZReleased)
             {
+                
                 SendMessage(hwTB, WM_COMMAND, MAKEWPARAM(IDC_ZOOM2X, 0), 0);
                 isZReleased = false;
             }
+            
+            
             if (GetKeyState(VK_NUMPAD2) & 0x8000)
             {
                 if (Paste_Mode)
@@ -17397,6 +18795,7 @@ void CheckAccelerators(void)
                 if ((isTabReleased) && (GetKeyState(VK_TAB) & 0x8000) && !(GetKeyState(VK_MENU) & 0x8000) && !(GetKeyState(VK_CONTROL) & 0x8000) &&
                     !(GetKeyState(VK_LWIN) & 0x8000) && !(GetKeyState(VK_RWIN) & 0x8000))
                 {
+                    
                     Edit_Mode = !Edit_Mode;
                     Update_Toolbar = true;
                     UpdateFSneeded = true;
@@ -17407,6 +18806,7 @@ void CheckAccelerators(void)
                 {
                     if ((isSReleased) && (GetKeyState('S') & 0x8000))
                     {
+                        
                         isSReleased = false;
                         if (Save_cRom(false, true, (char*)""))
                         {
@@ -17416,21 +18816,25 @@ void CheckAccelerators(void)
                     }
                     if ((isXReleased) && (GetKeyState('X') & 0x8000))
                     {
+                        
                         isXReleased = false;
                         SendMessage(hwTB, WM_COMMAND, MAKEWPARAM(IDC_DISPEXTRA, 0), 0);
                     }
                     if ((isZReleased) && (GetKeyState('Z') & 0x8000))
                     {
+                        
                         isZReleased = false;
                         RecoverAction(true);
                     }
                     if ((isYReleased) && (GetKeyState('Y') & 0x8000))
                     {
+                        
                         isYReleased = false;
                         RecoverAction(false);
                     }
                     if ((isMReleased) && (GetKeyState('M') & 0x8000))
                     {
+                        
                         isMReleased = false;
                         Edit_Mode = !Edit_Mode;
                         Update_Toolbar = true;
@@ -17439,10 +18843,12 @@ void CheckAccelerators(void)
                     }
                     if ((isAReleased) && (GetKeyState('A') & 0x8000))
                     {
+                        
                         if (Edit_Mode == 0)
                         {
                             if (MycRom.CompMaskID[acFrame] != 255)
                             {
+                                
                                 SaveAction(true, SA_COMPMASK);
                                 memset(&MycRom.CompMasks[MycRom.CompMaskID[acFrame] * MycRom.fWidth * MycRom.fHeight], 1, MycRom.fWidth * MycRom.fHeight);
                                 CheckSameFrames();
@@ -17450,6 +18856,7 @@ void CheckAccelerators(void)
                         }
                         else
                         {
+                            
                             SaveAction(true, SA_COPYMASK);
                             memset(Draw_Extra_Surface, 1, 256 * 64);
                             Add_Surface_To_Copy(Draw_Extra_Surface, false);
@@ -17458,10 +18865,12 @@ void CheckAccelerators(void)
                     }
                     if ((isDReleased) && (GetKeyState('D') & 0x8000))
                     {
+                        
                         if (Edit_Mode == 0)
                         {
                             if (MycRom.CompMaskID[acFrame] != 255)
                             {
+                                
                                 SaveAction(true, SA_COMPMASK);
                                 memset(&MycRom.CompMasks[MycRom.CompMaskID[acFrame] * MycRom.fWidth * MycRom.fHeight], 0, MycRom.fWidth * MycRom.fHeight);
                                 CheckSameFrames();
@@ -17469,6 +18878,7 @@ void CheckAccelerators(void)
                         }
                         else
                         {
+                            
                             SaveAction(true, SA_COPYMASK);
                             memset(Draw_Extra_Surface, 1, 256 * 64);
                             Add_Surface_To_Copy(Draw_Extra_Surface, true);
@@ -17477,12 +18887,14 @@ void CheckAccelerators(void)
                     }
                     if ((isFReleased) && (GetKeyState('F') & 0x8000))
                     {
+                        
                         isFReleased = false;
                         PreFrameInStrip = acFrame;
                         UpdateFSneeded = true;
                     }
                     if (isBReleased && (GetKeyState('B') & 0x8000))
                     {
+                        
                         isBReleased = false;
                         SaveAction(true, SA_DRAW);
                         UpdateFSneeded = true;
@@ -17495,7 +18907,7 @@ void CheckAccelerators(void)
                             fh = MycRom.fHeightX;
                             pfr = MycRom.cFramesX;
                         }
-                        else if (ExtraResFClicked) return;
+                        else if (ExtraResFClicked) return; 
                         else
                         {
                             fw = MycRom.fWidth;
@@ -17523,18 +18935,22 @@ void CheckAccelerators(void)
                     }
                     if (Edit_Mode == 1)
                     {
+                        
                         if ((isCReleased) && (GetKeyState('C') & 0x8000))
                         {
+                            
                             isCReleased = false;
                             SendMessage(hwTB, WM_COMMAND, IDC_COPY, 0);
                         }
                         if ((isVReleased) && (GetKeyState('V') & 0x8000))
                         {
+                            
                             isVReleased = false;
                             if (IsWindowEnabled(GetDlgItem(hwTB, IDC_PASTE)) == TRUE) SendMessage(hwTB, WM_COMMAND, IDC_PASTE, 0);
                         }
                         if ((isEReleased) && (GetKeyState('E') & 0x8000))
                         {
+                            
                             isEReleased = false;
                             SaveAction(true, SA_DYNAMASK);
                             UINT fw, fh;
@@ -17589,6 +19005,7 @@ void CheckAccelerators(void)
             {
                 if ((isDReleased) && (GetKeyState('D') & 0x8000) && (Edit_Mode == 1))
                 {
+                    
                     isDReleased = false;
                     SaveAction(true, SA_DYNAMASK);
                     UINT fw, fh;
@@ -17621,6 +19038,7 @@ void CheckAccelerators(void)
                 }
                 if ((isAReleased) && (GetKeyState('A') & 0x8000) && (Edit_Mode == 1))
                 {
+                    
                     isAReleased = false;
                     SaveAction(true, SA_DYNAMASK);
                     UINT fw, fh;
@@ -17648,10 +19066,12 @@ void CheckAccelerators(void)
             {
                 if ((isEnterReleased) && (GetKeyState(VK_RETURN) & 0x8000) && (Paste_Mode == true))
                 {
+                    
                     mouse_button_callback(glfwframe, GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
                 }
                 if (Edit_Mode == 1)
                 {
+                    
                     if (!SCKeyState('1')) is1Rel = true;
                     else if (is1Rel)
                     {
@@ -17775,9 +19195,10 @@ void CheckAccelerators(void)
     {
         if (MycRom.name[0])
         {
-            if (Zoom_Pushed_Sprite)// && ((nEditExtraResolutionS && MycRom.fHeightX == 64) || (!nEditExtraResolutionS && MycRom.fHeight == 64)))
+            if (Zoom_Pushed_Sprite)
             {
                 bool ishft = (GetKeyState(VK_CONTROL) & 0x8000) > 0;
+                
                 if (GetKeyState(VK_NUMPAD2) & 0x8000)
                 {
                     DWORD newtime = timeGetTime();
@@ -17857,6 +19278,7 @@ void CheckAccelerators(void)
             }
             if (GetKeyState('Z') & 0x8000 && GetKeyState(VK_SHIFT) & 0x8000 && isZReleased)
             {
+                
                 SendMessage(hwTB2, WM_COMMAND, MAKEWPARAM(IDC_ZOOM2X, 0), 0);
                 isZReleased = false;
             }
@@ -17864,16 +19286,19 @@ void CheckAccelerators(void)
             {
                 if ((isZReleased) && (GetKeyState('Z') & 0x8000))
                 {
+                    
                     isZReleased = false;
                     RecoverAction(true);
                 }
                 if ((isYReleased) && (GetKeyState('Y') & 0x8000))
                 {
+                    
                     isYReleased = false;
                     RecoverAction(false);
                 }
                 if ((isSReleased) && (GetKeyState('S') & 0x8000))
                 {
+                    
                     isSReleased = false;
                     if (Save_cRom(false, true, (char*)""))
                     {
@@ -17883,6 +19308,7 @@ void CheckAccelerators(void)
                 }
                 if ((isVReleased) && (GetKeyState('V') & 0x8000))
                 {
+                    
                     isVReleased = false;
                     if (IsWindowEnabled(GetDlgItem(hwTB2, IDC_PASTE)) == TRUE) SendMessage(hwTB2, WM_COMMAND, IDC_PASTE, 0);
                 }
@@ -17909,16 +19335,22 @@ void CheckAccelerators(void)
     {
         if ((isVReleased) && (GetKeyState('V') & 0x8000) && (GetKeyState(VK_CONTROL) & 0x8000))
         {
+            
             isVReleased = false;
             SendMessage(hwTB3, WM_COMMAND, IDC_CBPASTE, 0);
         }
         if ((isCReleased) && (GetKeyState('C') & 0x8000) && (GetKeyState(VK_CONTROL) & 0x8000))
         {
+            
             isCReleased = false;
             SendMessage(hwTB3, WM_COMMAND, IDC_COPY, 0);
         }
    }
 }
+
+
+
+
 void mouse_scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
 {
     if (MycRom.name[0] == 0) return;
@@ -17929,6 +19361,10 @@ void mouse_scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
     if (PreFrameInStrip >= (int)MycRom.nFrames) PreFrameInStrip = (int)MycRom.nFrames - 1;
     UpdateFSneeded = true;
 }
+
+
+
+
 void mouse_scroll_callback2(GLFWwindow* window, double xoffset, double yoffset)
 {
     if (MycRom.name[0] == 0) return;
@@ -17939,15 +19375,20 @@ void mouse_scroll_callback2(GLFWwindow* window, double xoffset, double yoffset)
     if (PreSpriteInStrip >= (int)MycRom.nSprites) PreSpriteInStrip = (int)MycRom.nSprites - 1;
     UpdateSSneeded = true;
 }
+
+
+
+
 void mouse_move_callback2(GLFWwindow* window, double xpos, double ypos)
 {
-    if (MycRom.name[0] == 0) return;
+    if (MycRom.name[0] == 0) return; 
     if (ExtraResSClicked && MycRom.isExtraSprite[acSprite] == 0) return;
     if (window == glfwsprites)
     {
         if ((Mouse_Mode == 4) || (Mouse_Mode == 3) || (Mouse_Mode == 2))
         {
-            if (Zoom_Pushed_Sprite)// && ((nEditExtraResolutionS && MycRom.fHeightX == 64) || (!nEditExtraResolutionS && MycRom.fHeight == 64)))
+            
+            if (Zoom_Pushed_Sprite)
             {
                 MouseFinPosx = (int)(xpos / (2 * sprite_zoom) + offset_sprite_x);
                 MouseFinPosy = (int)(ypos / (2 * sprite_zoom) + offset_sprite_y);
@@ -17963,6 +19404,7 @@ void mouse_move_callback2(GLFWwindow* window, double xpos, double ypos)
             if (MouseFinPosy >= (int)MAX_SPRITE_HEIGHT) MouseFinPosy = MAX_SPRITE_HEIGHT - 1;
             if (Mouse_Mode == 3)
             {
+                
                 if (nEditExtraResolutionS)
                     MycRom.SpriteColoredX[(acSprite * MAX_SPRITE_HEIGHT + MouseFinPosy) * MAX_SPRITE_WIDTH + MouseFinPosx] =
                     MycRP.acEditColorsS[noSprSel];
@@ -17974,9 +19416,12 @@ void mouse_move_callback2(GLFWwindow* window, double xpos, double ypos)
         }
     }
 }
+
+
+
 void mouse_move_callback(GLFWwindow* window, double xpos, double ypos)
 {
-    if (MycRom.name[0] == 0) return;
+    if (MycRom.name[0] == 0) return; 
     if (ExtraResFClicked && MycRom.isExtraFrame[acFrame] == 0 && Edit_Mode == 1) return;
     UINT fw, fh;
     UINT16* pfr;
@@ -18026,6 +19471,7 @@ void mouse_move_callback(GLFWwindow* window, double xpos, double ypos)
         }
         if (Edit_Mode == 0 || (Edit_Mode == 1 && MycRP.Draw_Mode != 3 && MycRP.Draw_Mode != 5))
         {
+            
             if (MouseFinPosx < 0) MouseFinPosx = 0;
             if (MouseFinPosx >= (int)fw) MouseFinPosx = fw - 1;
             if (MouseFinPosy < 0) MouseFinPosy = 0;
@@ -18034,16 +19480,20 @@ void mouse_move_callback(GLFWwindow* window, double xpos, double ypos)
         
         switch (Mouse_Mode)
         {
+            
             case 1:
             {
+                
                 if (!isDel_Mode) MycRom.CompMasks[(MycRom.CompMaskID[acFrame] * MycRom.fHeight + MouseFinPosy) * MycRom.fWidth + MouseFinPosx] = 1;
                 else MycRom.CompMasks[(MycRom.CompMaskID[acFrame] * MycRom.fHeight + MouseFinPosy) * MycRom.fWidth + MouseFinPosx] = 0;
                 break;
             }
             case 3:
             {
+                
                 if (!Copy_Mode)
                 {
+                    
                     UINT16 tcol;
                     if (MycRP.DrawColMode == 1)
                     {
@@ -18058,6 +19508,7 @@ void mouse_move_callback(GLFWwindow* window, double xpos, double ypos)
                             tcol = MycRP.acEditColorsS[MycRP.oFrames[(acFrame * MycRom.fHeight + MouseFinPosy) * MycRom.fWidth + MouseFinPosx]];
                     }
                     else
+                        
                         tcol = MycRP.acEditColorsS[noColSel];
                     for (UINT32 ti = 0; ti < nSelFrames; ti++)
                     {
@@ -18087,6 +19538,7 @@ void mouse_move_callback(GLFWwindow* window, double xpos, double ypos)
             }
             case 5:
             {
+                
                 for (UINT32 ti = 0; ti < nSelFrames; ti++)
                 {
                     if (isDel_Mode)
@@ -18104,14 +19556,16 @@ void mouse_move_callback(GLFWwindow* window, double xpos, double ypos)
                     }
                     else pdynm[(SelFrames[ti] * fh + MouseFinPosy) * fw + MouseFinPosx] = acDynaSet;
                 }
-                RotationsInFrame[MouseFinPosy * fw + MouseFinPosx][0] = 0xffff;
+                RotationsInFrame[MouseFinPosy * fw + MouseFinPosx][0] = 0xffff; 
                 break;
             }
             case 7:
             {
+                
                 if (isDel_Mode) Copy_Mask[MouseFinPosy * fw + MouseFinPosx] = 0;
                 else
                 {
+                    
                     if (!(GetKeyState('W') & 0x8000) || (pfr[(acFrame * fh + MouseFinPosy) * fw + MouseFinPosx] != 0))
                         Copy_Mask[MouseFinPosy * fw + MouseFinPosx] = 1;
                 }
@@ -18120,16 +19574,19 @@ void mouse_move_callback(GLFWwindow* window, double xpos, double ypos)
         }
     }
 }
+
+
+
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 {
-    if (MycRom.name[0] == 0) return;
-    if ((action == GLFW_PRESS) && (Mouse_Mode != 0)) return;
+    if (MycRom.name[0] == 0) return; 
+    if ((action == GLFW_PRESS) && (Mouse_Mode != 0)) return; 
     double xpos, ypos;
     glfwGetCursorPos(window, &xpos, &ypos);
     int xipos = (int)xpos, yipos = (int)ypos;
-    if (window == glfwframe)
+    if (window == glfwframe) 
     {
-        if (ExtraResFClicked && MycRom.isExtraFrame[acFrame] == 0) return;
+        if (ExtraResFClicked && MycRom.isExtraFrame[acFrame] == 0) return; 
         int xgrid, ygrid;
         if (Zoom_Pushed && ((nEditExtraResolutionF && MycRom.fHeightX == 64) || (!nEditExtraResolutionF && MycRom.fHeight == 64)))
         {
@@ -18138,22 +19595,24 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
         }
         else
         {
-            xgrid = (int)(xipos / frame_zoom);// +ac_offset_frame_x;
-            ygrid = (int)(yipos / frame_zoom);// +ac_offset_frame_y;
+            xgrid = (int)(xipos / frame_zoom);
+            ygrid = (int)(yipos / frame_zoom);
         }
-        //if (xgrid < 0) xgrid = 0;
-        //if (ygrid < 0) ygrid = 0;
-        if (action == GLFW_PRESS)
+        
+        
+        if (action == GLFW_PRESS) 
         {
-            if (Edit_Mode == 0)
+            if (Edit_Mode == 0) 
             {
-                //if (xgrid >= MycRom.fWidth) xgrid = MycRom.fWidth - 1;
-                //if (ygrid >= MycRom.fHeight) ygrid = MycRom.fHeight - 1;
+                
+                
                 if ((button == GLFW_MOUSE_BUTTON_LEFT) && (!(mods & (GLFW_MOD_ALT | GLFW_MOD_CONTROL))) && (MycRom.CompMaskID[acFrame] < 255))
                 {
+                    
                     if (mods & GLFW_MOD_SHIFT) isDel_Mode = true; else isDel_Mode = false;
                     if (MycRP.Mask_Sel_Mode == 0)
                     {
+                        
                         SaveAction(true, SA_COMPMASK);
                         Mouse_Mode = 1;
                         if (!isDel_Mode) MycRom.CompMasks[(MycRom.CompMaskID[acFrame] * MycRom.fHeight + ygrid) * MycRom.fWidth + xgrid] = 1;
@@ -18161,6 +19620,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                     }
                     else
                     {
+                        
                         Mouse_Mode = 2;
                         MouseIniPosx = xgrid;
                         MouseIniPosy = ygrid;
@@ -18170,6 +19630,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                     return;
                 }
             }
+            else 
             {
                 UINT fh, fw;
                 UINT16* pfr, * pdync, * pbg = NULL;
@@ -18202,6 +19663,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                         pbgm = MycRom.BackgroundMask;
                     }
                 }
+                
                 if (Color_Pipette > 0)
                 {
                     if (button == GLFW_MOUSE_BUTTON_LEFT)
@@ -18231,28 +19693,35 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                         }
 
                         if (pbgm != NULL && pbgm[(acFrame * fh + ygrid) * fw + xgrid] > 0 && MycRP.oFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ygo * MycRom.fWidth + xgo] == 0)
+                            
                             fcol = pbg[(BGID * fh + ygrid) * fw + xgrid];
                         else if (pdynm[(acFrame * fh + ygrid) * fw + xgrid] < 255)
+                            
                             fcol = pdync[acFrame * MAX_DYNA_SETS_PER_FRAMEN * MycRom.noColors + pdynm[(acFrame * fh + ygrid) * fw + xgrid] * MycRom.noColors + MycRP.oFrames[acFrame * MycRom.fWidth * MycRom.fHeight + ygo * MycRom.fWidth + xgo]];
                         else
+                            
                             fcol = pfr[acFrame * fw * fh + ygrid * fw + xgrid];
                         if (Color_Pipette > 1)
                         {
+                            
                             SaveAction(true, SA_PALETTE);
                             MycRP.Palette[Color_Pipette] = fcol;
                             Color_Pipette = 0;
                         }
                         else if (!(mods & GLFW_MOD_SHIFT))
                         {
+                            
                             SaveAction(true, SA_ACCOLORS);
-                            MycRP.acEditColorsS[noColSel] = fcol;// pfr[(acFrame * fh + ygrid) * fw + xgrid];
+                            MycRP.acEditColorsS[noColSel] = fcol;
                             InvalidateRect(GetDlgItem(hwTB, IDC_COL1 + noColSel), NULL, FALSE);
                             InvalidateRect(GetDlgItem(hwTB2, IDC_COL1 + noColSel), NULL, FALSE);
                             Color_Pipette = 0;
                         }
                         else
                         {
-                            //UINT16 nocolor= MycRom.cFrames[(acFrame * fh + ygrid) * fw + xgrid];
+                            
+                            
+                            
                             for (UINT ti = 0; ti < MycRom.noColors; ti++)
                             {
                                 if (MycRP.acEditColorsS[ti] == fcol) noColSel = ti;
@@ -18273,8 +19742,10 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                         ofx = offset_frame_x;
                         ofy = offset_frame_y;
                     }
+                    
                     if (GetKeyState(VK_MENU) & 0x8000)
                     {
+                        
                         SaveAction(true, SA_DYNAMASK);
                         for (UINT32 tk = 0; tk < nSelFrames; tk++)
                         {
@@ -18283,7 +19754,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                                 for (int ti = 0; ti < (int)Paste_Width; ti++)
                                 {
                                     if (((ti + paste_offsetx) < 0) || ((ti + paste_offsetx) >= (int)fw) || ((tj + paste_offsety) < 0) || ((tj + paste_offsety) >= (int)fh)) continue;
-                                    if (Paste_Mask[tj * Paste_Width + ti] > 0) //&& Paste_Dyna[tj * Paste_Width + ti] == Copy_From_DynaMask)
+                                    if (Paste_Mask[tj * Paste_Width + ti] > 0) 
                                     {
                                         pdynm[SelFrames[tk] * fw * fh + (tj + paste_offsety) * fw + (ti + paste_offsetx)] = Paste_Dyna[tj * Paste_Width + ti];
                                     }
@@ -18293,14 +19764,15 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                     }
                     else
                     {
+                        
                         bool condpaste = false;
-                        if (GetKeyState(VK_SHIFT) & 0x8000) condpaste = true;
+                        if (GetKeyState(VK_SHIFT) & 0x8000) condpaste = true; 
                         SaveAction(true, SA_FULLDRAW);
                         for (UINT32 tk = 0; tk < nSelFrames; tk++)
                         {
                             if (nEditExtraResolutionF && MycRom.isExtraFrame[SelFrames[tk]] == 0) continue;
-                            int cff = Copy_From_Frame;
-                            if (cff == -1) cff = acFrame;
+                            int cff = Copy_From_Frame; 
+                            if (cff == -1) cff = acFrame; 
                             CopyDynaCol(cff, SelFrames[tk]);
                             for (UINT tj = 0; tj < Paste_Height; tj++)
                             {
@@ -18341,13 +19813,16 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                 }
                 else if ((button == GLFW_MOUSE_BUTTON_LEFT) && (!(mods & (GLFW_MOD_ALT | GLFW_MOD_CONTROL))))
                 {
+                    
                     isDel_Mode = false;
                     if (mods & GLFW_MOD_SHIFT) isDel_Mode = true; else isDel_Mode = false;
                     if (MycRP.Draw_Mode == 0)
                     {
+                        
                         SaveAction(true, SA_DRAW);
                         Mouse_Mode = 3;
                         UINT16 tcol;
+                        
                         UINT8 colo;
                         if (nEditExtraResolutionF)
                         {
@@ -18357,7 +19832,9 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                                 colo = MycRP.oFrames[(acFrame * fh + ygrid * 2) * fw + xgrid * 2];
                         }
                         else colo = MycRP.oFrames[(acFrame * MycRom.fHeight + ygrid) * MycRom.fWidth + xgrid];
+                        
                         if (MycRP.DrawColMode == 1) tcol = MycRP.acEditColorsS[colo];
+                        
                         else tcol = MycRP.acEditColorsS[noColSel];
                         for (UINT32 ti = 0; ti < nSelFrames; ti++)
                         {
@@ -18369,6 +19846,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                     }
                     else
                     {
+                        
                         Mouse_Mode = 4;
                         MouseIniPosx = xgrid;
                         MouseIniPosy = ygrid;
@@ -18381,10 +19859,12 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                 {
                     if (!(mods & GLFW_MOD_ALT))
                     {
+                        
                         isDel_Mode = false;
                         if (mods & GLFW_MOD_SHIFT) isDel_Mode = true; else isDel_Mode = false;
                         if (MycRP.Draw_Mode == 0)
                         {
+                            
                             SaveAction(true, SA_COPYMASK);
                             Mouse_Mode = 7;
                             int ti;
@@ -18416,6 +19896,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                         }
                         else
                         {
+                            
                             Mouse_Mode = 8;
                             MouseIniPosx = xgrid;
                             MouseIniPosy = ygrid;
@@ -18426,7 +19907,9 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                     }
                     else
                     { 
+                        
                         if (MycRP.Draw_Mode != 4) return;
+                        
                         
                         if ((!ExtraResFClicked && MycRom.DynaMasks[acFrame * MycRom.fWidth * MycRom.fHeight + ygrid * MycRom.fWidth + xgrid] != 255) ||
                             (ExtraResFClicked && MycRom.DynaMasksX[acFrame * MycRom.fWidthX * MycRom.fHeightX + ygrid * MycRom.fWidthX + xgrid] != 255))
@@ -18436,6 +19919,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                         }
                         if (mods & GLFW_MOD_CONTROL)
                         {
+                            
                             SaveAction(true, SA_COPYMASK);
                             if (mods & GLFW_MOD_SHIFT) isDel_Mode = true; else isDel_Mode = false;
                             Mouse_Mode = 7;
@@ -18479,6 +19963,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                         }
                         else
                         {
+                            
                             SaveAction(true, SA_DRAW);
                             Mouse_Mode = 0;
                             if (nEditExtraResolutionF)
@@ -18527,10 +20012,12 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                 }
                 else if ((button == GLFW_MOUSE_BUTTON_RIGHT) && (!(mods & (GLFW_MOD_ALT | GLFW_MOD_CONTROL))))
                 {
+                    
                     isDel_Mode = false;
                     if (mods & GLFW_MOD_SHIFT) isDel_Mode = true; else isDel_Mode = false;
                     if (MycRP.Draw_Mode == 0)
                     {
+                        
                         SaveAction(true, SA_DYNAMASK);
                         Mouse_Mode = 5;
                         if (nEditExtraResolutionF)
@@ -18575,10 +20062,12 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                                 pdynm[(SelFrames[ti] * fh + ygrid) * fw + xgrid] = 255;
                             }
                         }
-                        RotationsInFrame[ygrid * fw + xgrid][0] = 0xffff;
+                        RotationsInFrame[ygrid * fw + xgrid][0] = 0xffff; 
                     }
                     else
                     {
+                        
+                        
                         Mouse_Mode = 6;
                         MouseIniPosx = xgrid;
                         MouseIniPosy = ygrid;
@@ -18595,6 +20084,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                         MessageBoxA(hWnd, "The pixel you clicked is dynamically colored, this function works only for static content.", "Improper use", MB_OK);
                         return;
                     }
+                    
                     SaveAction(true, SA_DYNAMASK);
                     Mouse_Mode = 0;
                     if (nEditExtraResolutionF)
@@ -18632,6 +20122,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
         {
             if (Edit_Mode == 0 && MycRom.CompMaskID[acFrame] != 255)
             {
+                
                 if ((button == GLFW_MOUSE_BUTTON_LEFT) && (Mouse_Mode == 2))
                 {
                     SaveAction(true, SA_COMPMASK);
@@ -18640,6 +20131,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
             }
             else
             {
+                
                 if ((button == GLFW_MOUSE_BUTTON_LEFT) && (Mouse_Mode == 4))
                 {
                     SaveAction(true, SA_DRAW);
@@ -18659,6 +20151,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                     SaveAction(true, SA_COPYMASK);
                     Add_Surface_To_Copy(Draw_Extra_Surface, isDel_Mode);
                 }
+                
                 else if (button == GLFW_MOUSE_BUTTON_RIGHT)
                 {
                     if (Mouse_Mode == 6)
@@ -18676,9 +20169,11 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
     }
     else if ((window == glfwframestrip) && (MycRom.name[0] != 0))
     {
+        
         if ((button == GLFW_MOUSE_BUTTON_LEFT) && (action == GLFW_RELEASE)) MouseFrSliderLPressed = false;
         if ((button == GLFW_MOUSE_BUTTON_LEFT) && (action == GLFW_PRESS))
         {
+            
             if ((yipos >= FRAME_STRIP_HEIGHT - FRAME_STRIP_H_MARGIN / 2 - 5) && (yipos <= FRAME_STRIP_HEIGHT - FRAME_STRIP_H_MARGIN / 2 + 6))
             {
                 if ((xipos >= FRAME_STRIP_SLIDER_MARGIN) && (xipos <= (int)ScrW - FRAME_STRIP_SLIDER_MARGIN))
@@ -18687,13 +20182,14 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                 }
                 return;
             }
+            
             UINT wid = 256;
             if (MycRom.fWidth == 192) wid = 192;
             if ((yipos >= FRAME_STRIP_H_MARGIN) && (yipos < FRAME_STRIP_H_MARGIN + 128))
             {
                 if ((xipos >= (int)FS_LMargin + FRAME_STRIP_W_MARGIN) && (xipos <= (int)ScrW - (int)FS_LMargin - FRAME_STRIP_W_MARGIN))
                 {
-                    if ((xipos - FS_LMargin- FRAME_STRIP_W_MARGIN) % (wid + FRAME_STRIP_W_MARGIN) < wid)
+                    if ((xipos - FS_LMargin- FRAME_STRIP_W_MARGIN) % (wid + FRAME_STRIP_W_MARGIN) < wid) 
                     {
                         SaveAction(true, SA_SELECTION);
                         prevFrame = acFrame;
@@ -18704,26 +20200,33 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                         if (tpFrame < 0) tpFrame = 0;
                         if (mods & GLFW_MOD_SHIFT)
                         {
+                            
                             if (mods & GLFW_MOD_CONTROL)
                             {
+                                
                                 for (UINT ti = min(prevFrame, tpFrame); ti <= max(prevFrame, tpFrame); ti++) Add_Selection_Frame(ti);
                             }
                             else if (mods & GLFW_MOD_ALT)
                             {
+                                
                                 for (UINT ti = min(prevFrame, tpFrame); ti <= max(prevFrame, tpFrame); ti++) Del_Selection_Frame(ti);
                             }
                             else
                             {
+                                
                                 nSelFrames = 0;
                                 for (UINT ti = min(prevFrame, tpFrame); ti <= max(prevFrame, tpFrame); ti++) Add_Selection_Frame(ti);
                             }
                         }
                         else if (mods & GLFW_MOD_CONTROL)
                         {
+                            
                             if ((isFrameSelected(tpFrame) != -1) && (nSelFrames > 1)) Del_Selection_Frame(tpFrame); else Add_Selection_Frame(tpFrame);
                         }
                         else
                         {
+                            
+                            
                             int iSF = isFrameSelected(tpFrame);
                             if ((iSF == -1) || (tpFrame == prevFrame))
                             {
@@ -18759,7 +20262,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                         Deactivate_Draw_All_Sel();
                         UpdateNewacFrame();
                         AllSameFramesUpdated = false;
-                        //SetDlgItemTextA(hwTB, IDC_LISTSAMEFR, "Best Mask ???");
+                        
                         if (Edit_Mode == 0) InvalidateRect(GetDlgItem(hwTB, IDC_MASKLIST), NULL, FALSE);
                         SetMultiWarningF();
                     }
@@ -18769,17 +20272,21 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
         return;
     }
 }
+
+
+
 void mouse_button_callback2(GLFWwindow* window, int button, int action, int mods)
 {
     double xpos, ypos;
     glfwGetCursorPos(window, &xpos, &ypos);
     int xipos = (int)xpos, yipos = (int)ypos;
-    if (MycRom.name[0] == 0 || MycRom.nSprites == 0) return;
+    if (MycRom.name[0] == 0 || MycRom.nSprites == 0) return; 
     if (window == glfwsprites)
     {
-        if (ExtraResSClicked && MycRom.isExtraSprite[acSprite] == 0) return;
+        if (ExtraResSClicked && MycRom.isExtraSprite[acSprite] == 0) return; 
+        
         int xgrid, ygrid;
-        if (Zoom_Pushed_Sprite)// && ((nEditExtraResolutionS && MycRom.fHeightX == 64) || (!nEditExtraResolutionS && MycRom.fHeight == 64)))
+        if (Zoom_Pushed_Sprite)
         {
             xgrid = (int)(xipos / (2 * sprite_zoom) + offset_sprite_x);
             ygrid = (int)(yipos / (2 * sprite_zoom) + offset_sprite_y);
@@ -18791,8 +20298,10 @@ void mouse_button_callback2(GLFWwindow* window, int button, int action, int mods
         }
         if ((action == GLFW_PRESS) && (button == GLFW_MOUSE_BUTTON_LEFT))
         {
+            
             if (Sprite_Mode == 0)
             {
+                
                 SaveAction(true, SA_SPRITEDRAW);
                 Mouse_Mode = 3;
                 UINT16 tcol = MycRP.acEditColorsS[noSprSel];
@@ -18814,6 +20323,7 @@ void mouse_button_callback2(GLFWwindow* window, int button, int action, int mods
             }
             else
             {
+                
                 Mouse_Mode = 4;
                 MouseIniPosx = xgrid;
                 MouseIniPosy = ygrid;
@@ -18824,6 +20334,7 @@ void mouse_button_callback2(GLFWwindow* window, int button, int action, int mods
         }
         else if (action == GLFW_RELEASE && button == GLFW_MOUSE_BUTTON_LEFT)
         {
+            
             if (Mouse_Mode == 4)
             {
                 SaveAction(true, SA_SPRITEDRAW);
@@ -18836,8 +20347,10 @@ void mouse_button_callback2(GLFWwindow* window, int button, int action, int mods
         }
         else if ((action == GLFW_PRESS) && (button == GLFW_MOUSE_BUTTON_RIGHT))
         {
+            
             if (nEditExtraResolutionS)
             {
+                
                 MessageBoxA(hwTB2, "Please switch to original resolution edition to draw detection areas", "Incompatible edition mode", MB_OK);
                 return;
             }
@@ -18850,6 +20363,7 @@ void mouse_button_callback2(GLFWwindow* window, int button, int action, int mods
         }
         else if ((action == GLFW_RELEASE) && (button == GLFW_MOUSE_BUTTON_RIGHT))
         {
+            
             if (nEditExtraResolutionS) return;
             if (Mouse_Mode == 2)
             {
@@ -18876,9 +20390,11 @@ void mouse_button_callback2(GLFWwindow* window, int button, int action, int mods
     }
     else if ((window == glfwspritestrip) && (MycRom.name[0] != 0))
     {
+        
         if ((button == GLFW_MOUSE_BUTTON_LEFT) && (action == GLFW_RELEASE)) MouseSpSliderLPressed = false;
         if ((button == GLFW_MOUSE_BUTTON_LEFT) && (action == GLFW_PRESS))
         {
+            
             if ((yipos >= FRAME_STRIP_HEIGHT - FRAME_STRIP_H_MARGIN / 2 - 5) && (yipos <= FRAME_STRIP_HEIGHT - FRAME_STRIP_H_MARGIN / 2 + 6))
             {
                 if ((xipos >= FRAME_STRIP_SLIDER_MARGIN) && (xipos <= (int)ScrW2 - FRAME_STRIP_SLIDER_MARGIN))
@@ -18887,12 +20403,13 @@ void mouse_button_callback2(GLFWwindow* window, int button, int action, int mods
                 }
                 return;
             }
+            
             UINT wid = MAX_SPRITE_WIDTH;
             if ((yipos >= FRAME_STRIP_H_MARGIN) && (yipos < FRAME_STRIP_H_MARGIN + MAX_SPRITE_HEIGHT))
             {
                 if ((xipos >= (int)SS_LMargin + FRAME_STRIP_W_MARGIN) && (xipos <= (int)ScrW2 - (int)SS_LMargin - FRAME_STRIP_W_MARGIN))
                 {
-                    if ((xipos - SS_LMargin- FRAME_STRIP_W_MARGIN) % (wid + FRAME_STRIP_W_MARGIN) < wid)
+                    if ((xipos - SS_LMargin- FRAME_STRIP_W_MARGIN) % (wid + FRAME_STRIP_W_MARGIN) < wid) 
                     {
                         SaveAction(true, SA_ACSPRITE);
                         UINT tnspr = PreSpriteInStrip + (xipos - SS_LMargin- FRAME_STRIP_W_MARGIN) / (wid + FRAME_STRIP_W_MARGIN);
@@ -18900,7 +20417,9 @@ void mouse_button_callback2(GLFWwindow* window, int button, int action, int mods
                         acSprite = tnspr;
                         nSelSprites = 1;
                         SelSprites[0] = tnspr;
-                        //for (UINT ti = IDC_COL1; ti <= IDC_COL16; ti++) InvalidateRect(GetDlgItem(hwTB2, ti), NULL, TRUE);
+                        
+                        
+                        
                         Paste_Mode = false;
                         if (MycRom.isExtraSprite && MycRom.isExtraSprite[acSprite] > 0) CheckDlgButton(hwTB2, IDC_EXTRARES, BST_CHECKED); else CheckDlgButton(hwTB2, IDC_EXTRARES, BST_UNCHECKED);
                         UpdateSSneeded = true;
@@ -18914,6 +20433,9 @@ void mouse_button_callback2(GLFWwindow* window, int button, int action, int mods
         return;
     }
 }
+
+
+
 void mouse_scroll_callback3(GLFWwindow* window, double xoffset, double yoffset)
 {
     short step = (short)-yoffset;
@@ -18929,9 +20451,12 @@ void mouse_scroll_callback3(GLFWwindow* window, double xoffset, double yoffset)
     if (crop_offsety < 0) crop_offsety = 0;
     UpdateCropSize();
 }
+
+
+
 void mouse_move_callback3(GLFWwindow* window, double xpos, double ypos)
 {
-    //bool backreset = false;
+    
     float tratiow = (float)MonWidth / (float)image_sizeW;
     float tratioh = (float)MonHeight / (float)image_sizeH;
     if ((xpos >= image_posx) && (xpos < image_posx + image_sizeW) && (ypos >= image_posy) && (ypos < image_posy + image_sizeH))
@@ -18949,7 +20474,7 @@ void mouse_move_callback3(GLFWwindow* window, double xpos, double ypos)
     }
     if (image_mouseLpressed || image_mouseRpressed)
     {
-        //if (!backreset) for (int ti = 0; ti < MonWidth * MonHeight; ti++) pFilterImage[ti * 4 + 3] = IMAGE_MASK_OPACITY;
+        
         if (image_mouseLpressed)
         {
             crop_ioffsetx = crop_offsetx;
@@ -18970,6 +20495,9 @@ void mouse_move_callback3(GLFWwindow* window, double xpos, double ypos)
         }
     }
 }
+
+
+
 void mouse_button_callback3(GLFWwindow* window, int button, int action, int mods)
 {
     double xpos, ypos;
@@ -18994,8 +20522,14 @@ void mouse_button_callback3(GLFWwindow* window, int button, int action, int mods
         image_mouseRpressed = false;
     }
 }
+
+
+
+
+
 bool isPressed(int nVirtKey, DWORD* timePress)
 {
+    
     if (GetKeyState(nVirtKey) & 0x8000)
     {
         DWORD acTime = timeGetTime();
@@ -19013,6 +20547,12 @@ bool isPressed(int nVirtKey, DWORD* timePress)
 
 #pragma region Window_Creations
 
+
+
+
+
+
+
 bool SetIcon(HWND ButHWND, UINT ButIco)
 {
     HICON hicon = LoadIcon(hInst, MAKEINTRESOURCE(ButIco));
@@ -19021,6 +20561,12 @@ bool SetIcon(HWND ButHWND, UINT ButIco)
     DestroyIcon(hicon);
     return true;
 }
+
+
+
+
+
+
 bool SetImage(HWND ButHWND, UINT ButImg)
 {
     HBITMAP hbitmap = (HBITMAP)LoadBitmap(hInst, MAKEINTRESOURCE(ButImg));
@@ -19029,6 +20575,11 @@ bool SetImage(HWND ButHWND, UINT ButImg)
     DeleteObject(hbitmap);
     return true;
 }
+
+
+
+
+
 
 bool MaskUsed(UINT32 nomask)
 {
@@ -19039,6 +20590,9 @@ bool MaskUsed(UINT32 nomask)
     }
     return false;
 }
+
+
+
 void UpdateSectionList(void)
 {
     HWND hlst = GetDlgItem(hwTB, IDC_SECTIONLIST);
@@ -19053,6 +20607,9 @@ void UpdateSectionList(void)
     int ti = Which_Section(acFrame);
     SendMessage(hlst, CB_SETCURSEL, ti + 1, 0);
 }
+
+
+
 void UpdatePuPList(void)
 {
     HWND hlst = GetDlgItem(hwTB, IDC_TRIGGERLIST);
@@ -19066,11 +20623,14 @@ void UpdatePuPList(void)
         }
     }
 }
+
+
+
 void UpdateSpriteList(void)
 {
     HWND hlst = GetDlgItem(hwTB2, IDC_SPRITELIST);
-    //acSprite = (UINT)SendMessage(hlst, LB_GETCURSEL, 0, 0);
-    //if (MycRom.isExtraSprite && MycRom.isExtraSprite[acSprite] > 0) CheckDlgButton(hwTB2, IDC_EXTRARES, BST_CHECKED); else CheckDlgButton(hwTB2, IDC_EXTRARES, BST_UNCHECKED);
+    
+    
     SendMessage(hlst, CB_RESETCONTENT, 0, 0);
     for (UINT32 ti = 0; ti < MycRom.nSprites; ti++)
     {
@@ -19080,6 +20640,9 @@ void UpdateSpriteList(void)
     }
     SendMessage(hlst, CB_SETCURSEL, acSprite, 0);
 }
+
+
+
 void UpdateBackgroundList(void)
 {
     HWND hlst = GetDlgItem(hwTB4, IDC_BGLIST);
@@ -19094,6 +20657,9 @@ void UpdateBackgroundList(void)
         }
     }
 }
+
+
+
 void UpdateMaskList2(void)
 {
     if (MycRom.name[0] == 0) return;
@@ -19126,6 +20692,9 @@ void UpdateMaskList2(void)
         }
     }
 }
+
+
+
 void UpdateSpriteList2(void)
 {
     if (MycRom.name[0] == 0) return;
@@ -19149,6 +20718,9 @@ void UpdateSpriteList2(void)
         }
     }
 }
+
+
+
 void UpdateSpriteList3(void)
 {
     if (MycRom.name[0] == 0) return;
@@ -19157,6 +20729,9 @@ void UpdateSpriteList3(void)
     for (UINT ti = 0; ti < MycRom.nSprites; ti++) SendMessageA(hlst, CB_ADDSTRING, 0, (LPARAM)&MycRP.Sprite_Names[ti * SIZE_SECTION_NAMES]);
     UpdateSpriteList2();
 }
+
+
+
 void UpdateMaskList(void)
 {
     HWND hlst = GetDlgItem(hwTB, IDC_MASKLIST);
@@ -19190,6 +20765,9 @@ void UpdateMaskList(void)
         UpdateMaskList2();
     }
 }
+
+
+
 void UpdateTriggerID(void)
 {
     if (MycRom.name[0] == 0) return;
@@ -19202,26 +20780,41 @@ void UpdateTriggerID(void)
     }
     UpdatePuPList();
 }
+
+
+
 void SetSpotButton(bool ison)
 {
     if (ison) SetIcon(GetDlgItem(hwTB, IDC_IDENT), IDI_SPOTON);
     else SetIcon(GetDlgItem(hwTB, IDC_IDENT), IDI_SPOTOFF);
 }
+
+
+
 void SetZoomButton(bool ison)
 {
     if (ison) SetIcon(GetDlgItem(hwTB, IDC_ZOOM2X), IDI_ZOOM2XON);
     else SetIcon(GetDlgItem(hwTB, IDC_ZOOM2X), IDI_ZOOM2X);
 }
+
+
+
 void SetZoomSpriteButton(bool ison)
 {
     if (ison) SetIcon(GetDlgItem(hwTB2, IDC_ZOOM2X), IDI_ZOOM2XON);
     else SetIcon(GetDlgItem(hwTB2, IDC_ZOOM2X), IDI_ZOOM2X);
 }
+
+
+
 void SetBackgroundMaskSpotButton(bool ison)
 {
     if (ison) SetIcon(GetDlgItem(hwTB, IDC_BBSPOT), IDI_BBSPOTON);
     else SetIcon(GetDlgItem(hwTB, IDC_BBSPOT), IDI_BBSPOTOFF);
 }
+
+
+
 void SetCommonButton(bool ison)
 {
     if (ison) SetIcon(GetDlgItem(hwTB, IDC_COMMON), IDI_COMMONON);
@@ -19259,7 +20852,7 @@ bool CreateToolbar(void)
         }
         ShowWindow(hwTB, TRUE);
         SetIcon(GetDlgItem(hwTB, IDC_COLMODE), IDI_COLMODE);
-        //CreateToolTip(IDC_COLMODE, hwTB, (PTSTR)L"Go to colorization mode");
+        
         SetIcon(GetDlgItem(hwTB, IDC_NEW), IDI_NEW);
         SetIcon(GetDlgItem(hwTB, IDC_ADDTXT), IDI_ADDTXT);
         SetIcon(GetDlgItem(hwTB, IDC_OPEN), IDI_OPEN);
@@ -19277,7 +20870,7 @@ bool CreateToolbar(void)
         SetIcon(GetDlgItem(hwTB, IDC_DELSELSAMEFR), IDI_DELSELSAME);
         SetIcon(GetDlgItem(hwTB, IDC_DELFRAME), IDI_DELFRAME);
         SetIcon(GetDlgItem(hwTB, IDC_INVERTSEL), IDI_INVERTSEL);
-        //SetIcon(GetDlgItem(hwTB, IDC_SELSAMEFR), IDI_SELSAMEFR);
+        
         SetIcon(GetDlgItem(hwTB, IDC_DELSAMEFR), IDI_DELSAMEFR);
         SetIcon(GetDlgItem(hwTB, IDC_MOVESECTION), IDI_MOVESECTION);
         SetIcon(GetDlgItem(hwTB, IDC_NIGHTDAY), IDI_NIGHTDAY);
@@ -19316,7 +20909,8 @@ bool CreateToolbar(void)
         SetWindowSubclass(GetDlgItem(hwTB, IDC_SECTIONLIST), (SUBCLASSPROC)SubclassSecListoProc, 1, 0);
         oldMask2ListFunc = (WNDPROC)GetWindowLongPtr(GetDlgItem(hwTB, IDC_MASKLIST2), GWLP_WNDPROC);
         SetWindowSubclass(GetDlgItem(hwTB, IDC_MASKLIST2), (SUBCLASSPROC)SubclassMask2ListProc, 4, 0);
-        functoremove = 1;*/
+        functoremove = 1;
+        */
     }
     else
     {
@@ -19420,11 +21014,13 @@ bool CreateToolbar(void)
         SetWindowSubclass(GetDlgItem(hwTB, IDC_SECTIONLIST), (SUBCLASSPROC)SubclassSecListcProc, 2, 0);
         oldSpriteList2Func = (WNDPROC)GetWindowLongPtr(GetDlgItem(hwTB, IDC_SPRITELIST2), GWLP_WNDPROC);
         SetWindowSubclass(GetDlgItem(hwTB, IDC_SPRITELIST2), (SUBCLASSPROC)SubclassSpriteList2Proc, 3, 0);
-        functoremove = 2;*/
+        functoremove = 2;
+        */
     }
     if (UndoAvailableN > 0) EnableWindow(GetDlgItem(hwTB, IDC_UNDO), TRUE); else EnableWindow(GetDlgItem(hwTB, IDC_UNDO), FALSE);
     if (RedoAvailableN > 0) EnableWindow(GetDlgItem(hwTB, IDC_REDO), TRUE); else EnableWindow(GetDlgItem(hwTB, IDC_REDO), FALSE);
 
+    
     UpdateSectionList();
     SetFocus(hwTB);
     PostMessage(hwTB, WM_NEXTDLGCTL, (WPARAM)GetDlgItem(hwTB, IDC_NEW), TRUE);
@@ -19438,7 +21034,8 @@ bool CreateToolbar2(void)
     if (hwTB2)
     {
         /*RemoveWindowSubclass(hwTB2, (SUBCLASSPROC)SubclassSpriteListProc, 5);
-        RemoveWindowSubclass(hwTB2, (SUBCLASSPROC)SubclassSpriteDetListProc, 6);*/
+        RemoveWindowSubclass(hwTB2, (SUBCLASSPROC)SubclassSpriteDetListProc, 6);
+        */
         DestroyWindow(hwTB2);
     }
     hwTB2 = CreateDialog(hInst, MAKEINTRESOURCE(IDD_SPRDLG), hSprites, Toolbar_Proc2);
@@ -19487,7 +21084,8 @@ bool CreateToolbar2(void)
     /*oldSpriteListFunc = (WNDPROC)GetWindowLongPtr(GetDlgItem(hwTB2, IDC_SPRITELIST), GWLP_WNDPROC);
     SetWindowSubclass(GetDlgItem(hwTB2, IDC_SPRITELIST), (SUBCLASSPROC)SubclassSpriteListProc, 5, 0);
     oldSpriteDetListFunc = (WNDPROC)GetWindowLongPtr(GetDlgItem(hwTB2, IDC_DETSPR), GWLP_WNDPROC);
-    SetWindowSubclass(GetDlgItem(hwTB2, IDC_DETSPR), (SUBCLASSPROC)SubclassSpriteDetListProc, 6, 0);*/
+    SetWindowSubclass(GetDlgItem(hwTB2, IDC_DETSPR), (SUBCLASSPROC)SubclassSpriteDetListProc, 6, 0);
+    */
     SetZoomSpriteButton(Zoom_Pushed_Sprite);
     SetExtraResFBox();
     char tbuf[8];
@@ -19518,7 +21116,8 @@ bool CreateToolbar3(void)
     if (hwTB3)
     {
         /*RemoveWindowSubclass(hwTB2, (SUBCLASSPROC)SubclassSpriteListProc, 5);
-        RemoveWindowSubclass(hwTB2, (SUBCLASSPROC)SubclassSpriteDetListProc, 6);*/
+        RemoveWindowSubclass(hwTB2, (SUBCLASSPROC)SubclassSpriteDetListProc, 6);
+        */
         DestroyWindow(hwTB3);
     }
     hwTB3 = CreateDialog(hInst, MAKEINTRESOURCE(IDD_IMGDLG), hImages, Toolbar_Proc3);
@@ -19530,7 +21129,7 @@ bool CreateToolbar3(void)
     ShowWindow(hwTB3, TRUE);
     SetIcon(GetDlgItem(hwTB3, IDC_BROWSEIMAGE), IDI_LOADIMAGE);
     SetIcon(GetDlgItem(hwTB3, IDC_CBPASTE), IDI_CLIPIMAGE);
-    //SetIcon(GetDlgItem(hwTB3, IDC_DELIMAGE), IDI_DELIMAGE);
+    
     SetIcon(GetDlgItem(hwTB3, IDC_COPY), IDI_COPY);
     SetIcon(GetDlgItem(hwTB3, IDC_ZOOMIN), IDI_DOWNSCALE);
     SetIcon(GetDlgItem(hwTB3, IDC_ZOOMOUT), IDI_UPSCALE);
@@ -19554,8 +21153,8 @@ bool CreateToolbar3(void)
     SendMessageA(GetDlgItem(hwTB3, IDC_FILTERTYPE), CB_ADDSTRING, 0, (LPARAM)"Lanczos4");
     FrameResizeFilter = 0;
     SendMessageA(GetDlgItem(hwTB3, IDC_FILTERTYPE), CB_SETCURSEL, 0, 0);
-    //if (UndoAvailable > 0) EnableWindow(GetDlgItem(hwTB3, IDC_UNDO), TRUE); else EnableWindow(GetDlgItem(hwTB3, IDC_UNDO), FALSE);
-    //if (RedoAvailable > 0) EnableWindow(GetDlgItem(hwTB3, IDC_REDO), TRUE); else EnableWindow(GetDlgItem(hwTB3, IDC_REDO), FALSE);
+    
+    
     /*char tbuf[8];
     SendMessage(GetDlgItem(hwTB2, IDC_DETSPR), CB_RESETCONTENT, 0, 0);
     for (int ti = 0; ti < MAX_SPRITE_DETECT_AREAS; ti++)
@@ -19563,19 +21162,24 @@ bool CreateToolbar3(void)
         _itoa_s(ti + 1, tbuf, 8, 10);
         SendMessageA(GetDlgItem(hwTB2, IDC_DETSPR), CB_ADDSTRING, 0, (LPARAM)tbuf);
     }
-    SendMessage(GetDlgItem(hwTB2, IDC_DETSPR), CB_SETCURSEL, 0, 1);*/
-    //acDetSprite = 0;
-    //UpdateSpriteList();
-    //UpdateSpriteList3();
+    SendMessage(GetDlgItem(hwTB2, IDC_DETSPR), CB_SETCURSEL, 0, 1);
+    */
+    
+    
+    
     return true;
 }
+
+
+
 bool CreateTextures(void)
 {
+    
     glfwMakeContextCurrent(glfwframestrip);
     MonWidth = GetSystemMetrics(SM_CXFULLSCREEN);
-//    MonHeight = GetSystemMetrics(SM_CXFULLSCREEN);
 
-    pFrameStrip = (UINT8*)malloc(MonWidth * FRAME_STRIP_HEIGHT * 4);
+
+    pFrameStrip = (UINT8*)malloc(MonWidth * FRAME_STRIP_HEIGHT * 4); 
     if (!pFrameStrip)
     {
         return false;
@@ -19584,15 +21188,18 @@ bool CreateTextures(void)
     glGenTextures(2, TxFrameStrip);
 
     glBindTexture(GL_TEXTURE_2D, TxFrameStrip[0]);
+    
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, MonWidth, FRAME_STRIP_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 
     glBindTexture(GL_TEXTURE_2D, TxFrameStrip[1]);
+    
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, MonWidth, FRAME_STRIP_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 
+    
     Bitmap* pbmp = Bitmap::FromFile(L"textures\\chiffres.png");
     if (pbmp == NULL) return false;
     Gdiplus::Rect rect = Gdiplus::Rect(0, 0, pbmp->GetWidth(), pbmp->GetHeight());
@@ -19601,6 +21208,7 @@ bool CreateTextures(void)
     glGenTextures(1, &TxChiffres);
 
     glBindTexture(GL_TEXTURE_2D, TxChiffres);
+    
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 200, 32, 0, GL_BGRA, GL_UNSIGNED_BYTE, bmpdata.Scan0);
@@ -19608,7 +21216,7 @@ bool CreateTextures(void)
     delete pbmp;
 
     glfwMakeContextCurrent(glfwBGstrip);
-    pBGStrip = (UINT8*)malloc(MonWidth * FRAME_STRIP_HEIGHT * 4);
+    pBGStrip = (UINT8*)malloc(MonWidth * FRAME_STRIP_HEIGHT * 4); 
     if (!pBGStrip)
     {
         free(pFrameStrip);
@@ -19618,18 +21226,21 @@ bool CreateTextures(void)
 
     glGenTextures(2, TxBGStrip);
     glBindTexture(GL_TEXTURE_2D, TxBGStrip[0]);
+    
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, MonWidth, FRAME_STRIP_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 
     glBindTexture(GL_TEXTURE_2D, TxBGStrip[1]);
+    
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, MonWidth, FRAME_STRIP_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 
+    
     glfwMakeContextCurrent(glfwspritestrip);
 
-    pSpriteStrip = (UINT8*)malloc(MonWidth * FRAME_STRIP_HEIGHT2 * 4);
+    pSpriteStrip = (UINT8*)malloc(MonWidth * FRAME_STRIP_HEIGHT2 * 4); 
     if (!pSpriteStrip)
     {
         free(pFrameStrip);
@@ -19642,14 +21253,17 @@ bool CreateTextures(void)
     glGenTextures(2, TxSpriteStrip);
 
     glBindTexture(GL_TEXTURE_2D, TxSpriteStrip[0]);
+    
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, MonWidth, FRAME_STRIP_HEIGHT2, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 
     glBindTexture(GL_TEXTURE_2D, TxSpriteStrip[1]);
+    
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, MonWidth, FRAME_STRIP_HEIGHT2, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    
     
     glfwMakeContextCurrent(glfwframe);
     pbmp = NULL;
@@ -19660,12 +21274,14 @@ bool CreateTextures(void)
     glGenTextures(1, &TxcRom);
 
     glBindTexture(GL_TEXTURE_2D, TxcRom);
+    
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, rect.Width, rect.Height, 0, GL_BGRA, GL_UNSIGNED_BYTE, bmpdata.Scan0);
     pbmp->UnlockBits(&bmpdata);
     delete pbmp;
 
+    
     FILE* pfile;
     if (fopen_s(&pfile, "textures\\chiffres.raw", "rb")) return false;
     fread(Raw_Digit_Def, 1, RAW_DIGIT_W * RAW_DIGIT_H * 11, pfile);
@@ -19674,6 +21290,7 @@ bool CreateTextures(void)
     glfwMakeContextCurrent(glfwimages);
     glGenTextures(1, &TxSelImage);
     glBindTexture(GL_TEXTURE_2D, TxSelImage);
+    
     pSelImage = (UINT8*)malloc(4 * 256 * IMAGE_ZOOM_TEXMUL * 64 * IMAGE_ZOOM_TEXMUL);
     if (!pSelImage)
     {
@@ -19693,6 +21310,12 @@ bool CreateTextures(void)
 
     return true;
 }
+
+
+
+
+
+
 bool glfwCreateCursorFromFile(char* rawfile,GLFWcursor** pcursor)
 {
     unsigned char pdata[32 * 32 * 4];
@@ -19707,6 +21330,12 @@ bool glfwCreateCursorFromFile(char* rawfile,GLFWcursor** pcursor)
     *pcursor = glfwCreateCursor(&image, 0, 0);
     return true;
 }
+
+
+
+
+
+
 HWND DoCreateStatusBar(HWND hwndParent, HINSTANCE  hinst)
 {
     HWND hwndStatus;
@@ -19715,31 +21344,39 @@ HWND DoCreateStatusBar(HWND hwndParent, HINSTANCE  hinst)
     PINT paParts;
     int nWidth;
 
+    
     InitCommonControls();
 
+    
     hwndStatus = CreateWindowEx(
-        0,                       // no extended styles
-        STATUSCLASSNAME,         // name of status bar class
-        (PCTSTR)NULL,           // no text when first created
-        WS_CHILD | WS_VISIBLE,   // creates a visible child window
-        0, 0, 0, 0,              // ignores size and position
-        hwndParent,              // handle to parent window
-        NULL,       // child window identifier
-        hinst,                   // handle to application instance
-        NULL);                   // no window creation data
+        0,                       
+        STATUSCLASSNAME,         
+        (PCTSTR)NULL,           
+        WS_CHILD | WS_VISIBLE,   
+        0, 0, 0, 0,              
+        hwndParent,              
+        NULL,       
+        hinst,                   
+        NULL);                   
 
+    
     GetClientRect(hwndParent, &rcClient);
 
+    
     hloc = LocalAlloc(LHND, sizeof(int));
     paParts = (PINT)LocalLock(hloc);
 
+    
+    
     nWidth = rcClient.right;
     int rightEdge = nWidth;
     paParts[0] = rightEdge;
     rightEdge += nWidth;
 
+    
     SendMessage(hwndStatus, SB_SETPARTS, 0, (LPARAM)paParts);
 
+    
     LocalUnlock(hloc);
     LocalFree(hloc);
     statusBarHeight = GetSystemMetrics(SM_CYCAPTION) + 10;
@@ -19788,6 +21425,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         cprintf(true, "Can't initialize GDI+");
         return -1;
     }
+    
     AllocConsole();
     hConsole = GetConsoleWindow();
     HMENU thmen= GetSystemMenu(hConsole, FALSE);
@@ -19802,12 +21440,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     wcex.cbClsExtra = 0;
     wcex.cbWndExtra = 0;
     wcex.hInstance = hInstance;
-    wcex.hIcon = LoadIcon(hInst, MAKEINTRESOURCE(IDI_CROM)); // LoadIcon(hInstance, MAKEINTRESOURCE(IDI_COLORIZINGDMD));
+    wcex.hIcon = LoadIcon(hInst, MAKEINTRESOURCE(IDI_CROM)); 
     wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-    wcex.lpszMenuName = NULL;// MAKEINTRESOURCEW(IDC_COLORIZINGDMD);
+    wcex.lpszMenuName = NULL;
     wcex.lpszClassName = szWindowClass;
-    wcex.hIconSm = NULL; // LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
+    wcex.hIconSm = NULL; 
     if (!RegisterClassEx(&wcex))
     {
         cprintf(true, "Call to RegisterClassEx failed!");
@@ -19820,12 +21458,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     wcex2.cbClsExtra = 0;
     wcex2.cbWndExtra = 0;
     wcex2.hInstance = hInstance;
-    wcex2.hIcon = LoadIcon(hInst, MAKEINTRESOURCE(IDI_CROM)); // LoadIcon(hInstance, MAKEINTRESOURCE(IDI_COLORIZINGDMD));
+    wcex2.hIcon = LoadIcon(hInst, MAKEINTRESOURCE(IDI_CROM)); 
     wcex2.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wcex2.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-    wcex2.lpszMenuName = NULL;// MAKEINTRESOURCEW(IDC_COLORIZINGDMD);
+    wcex2.lpszMenuName = NULL;
     wcex2.lpszClassName = szWindowClass2;
-    wcex2.hIconSm = NULL; // LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
+    wcex2.hIconSm = NULL; 
     if (!RegisterClassEx(&wcex2))
     {
         cprintf(true, "Call to RegisterClassEx2 failed!");
@@ -19838,12 +21476,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     wcex3.cbClsExtra = 0;
     wcex3.cbWndExtra = 0;
     wcex3.hInstance = hInstance;
-    wcex3.hIcon = LoadIcon(hInst, MAKEINTRESOURCE(IDI_CROM)); // LoadIcon(hInstance, MAKEINTRESOURCE(IDI_COLORIZINGDMD));
+    wcex3.hIcon = LoadIcon(hInst, MAKEINTRESOURCE(IDI_CROM)); 
     wcex3.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wcex3.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-    wcex3.lpszMenuName = NULL;// MAKEINTRESOURCEW(IDC_COLORIZINGDMD);
+    wcex3.lpszMenuName = NULL;
     wcex3.lpszClassName = szWindowClass3;
-    wcex3.hIconSm = NULL; // LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
+    wcex3.hIconSm = NULL; 
     if (!RegisterClassEx(&wcex3))
     {
         cprintf(true, "Call to RegisterClassEx3 failed!");
@@ -19963,11 +21601,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     glfwMakeContextCurrent(glfwframe);
     MSG msg;
 
-    // allocate space for undo/redo
+    
     GetTempPathA(MAX_PATH, temporaryDir);
     
-    UndoSaveN = (UINT8*)malloc(UNDO_REDO_BUFFER_SIZE);
-    RedoSaveN = (UINT8*)malloc(UNDO_REDO_BUFFER_SIZE);
+    UndoSaveN = (UINT8*)malloc(UNDO_REDO_BUFFER_SIZE); 
+    RedoSaveN = (UINT8*)malloc(UNDO_REDO_BUFFER_SIZE); 
     if ((!UndoSaveN) || (!RedoSaveN))
     {
         cprintf(true, "Can't get the memory for undo/redo actions");
@@ -19998,13 +21636,14 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     UpdateFSneeded = true;
     timeSelFrame = timeGetTime() + 500;
     DWORD tickCount = GetTickCount();
-    build_crc32_table();
+    build_crc32_table(); 
     LoadVars();
-
+    Serum_LoadDLL("serum64.dll");
     LoadWindowPosition();
 
     UpdateURCounts();
 
+    
     while (!fDone)
     {
         while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
@@ -20119,7 +21758,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                     }
                     Check_Commons();
                     AllSameFramesUpdated = false;
-                    //SetDlgItemTextA(hwTB, IDC_LISTSAMEFR, "Best Mask ???");
+                    
                     if (Edit_Mode == 0) InvalidateRect(GetDlgItem(hwTB, IDC_MASKLIST), NULL, FALSE);
                 }
                 if (isPressed(VK_RIGHT, &timeRPress))
@@ -20172,7 +21811,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                     }
                     Check_Commons();
                     AllSameFramesUpdated = false;
-                    //SetDlgItemTextA(hwTB, IDC_LISTSAMEFR, "Best Mask ???");
+                    
                     if (Edit_Mode == 0) InvalidateRect(GetDlgItem(hwTB, IDC_MASKLIST), NULL, FALSE);
                 }
             }
@@ -20244,6 +21883,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             }
             if ((MycRP.name[0] != 0) && (GetForegroundWindow() == hWnd))
             {
+                
                 EmptyExtraSurface();
                 glfwMakeContextCurrent(glfwframe);
                 UINT fw, fh;
@@ -20265,7 +21905,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                 }
                 switch (Mouse_Mode)
                 {
-                    case 0:
+                    case 0: 
                     {
                         if (Edit_Mode == 0)
                         {
@@ -20275,7 +21915,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                         }
                         break;
                     }
-                    case 1:
+                    case 1: 
                     {
                         Draw_Extra_Surface[MouseFinPosx + MouseFinPosy * MycRom.fWidth] = 1;
                         SetRenderDrawColor(mselcol, mselcol, mselcol, 255);
@@ -20283,12 +21923,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                         if (AllSameFramesUpdated)
                         {
                             AllSameFramesUpdated = false;
-                            //SetDlgItemTextA(hwTB, IDC_LISTSAMEFR, "Best Mask ???");
+                            
                             if (Edit_Mode == 0) InvalidateRect(GetDlgItem(hwTB, IDC_MASKLIST), NULL, FALSE);
                         }
                         break;
                     }
-                    case 2:
+                    case 2: 
                     {
                         switch (MycRP.Mask_Sel_Mode)
                         {
@@ -20300,24 +21940,25 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                                 break;
                         }
                         SetRenderDrawColor(mselcol, mselcol, mselcol, 255);
-                        //if (Zoom_Pushed && ((nEditExtraResolutionF && MycRom.fHeightX == 64) || (!nEditExtraResolutionF && MycRom.fHeight == 64)))
-                        //    Draw_Over_From_Surface(Draw_Extra_Surface, 0, 2 * frame_zoom, offset_frame_x, offset_frame_y, true, true);
-                        //else
+                        
+                        
+                        
+                        
                             Draw_Over_From_Surface(Draw_Extra_Surface, 0, frame_zoom, 0, 0, true, true);
                         if (AllSameFramesUpdated)
                         {
                             AllSameFramesUpdated = false;
-                            //SetDlgItemTextA(hwTB, IDC_LISTSAMEFR, "Best Mask ???");
+                            
                             if (Edit_Mode == 0) InvalidateRect(GetDlgItem(hwTB, IDC_MASKLIST), NULL, FALSE);
                         }
                         break;
                     }
-                    case 3:
+                    case 3: 
                     {
                         if (!Copy_Mode)
                         {
                             Draw_Extra_Surface[MouseFinPosx + MouseFinPosy * fw] = 1;
-                            //SetRenderDrawColor(mselcol, mselcol, mselcol, 255);
+                            
                             if (Zoom_Pushed && ((nEditExtraResolutionF && MycRom.fHeightX == 64) || (!nEditExtraResolutionF && MycRom.fHeight == 64)))
                                 Draw_Over_From_Surface(Draw_Extra_Surface, 0, 2 * frame_zoom, offset_frame_x, offset_frame_y, true, true);
                             else
@@ -20325,7 +21966,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                         }
                         break;
                     }
-                    case 4:
+                    case 4: 
                     {
                         switch (MycRP.Draw_Mode)
                         {
@@ -20363,7 +22004,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                             Draw_Over_From_Surface(Draw_Extra_Surface, 0, frame_zoom, 0, 0, true, true);
                         break;
                     }
-                    case 5:
+                    case 5: 
                     {
                         Draw_Extra_Surface[MouseFinPosx + MouseFinPosy * fw] = 1;
                         SetRenderDrawColor(mselcol, 0, mselcol, 255);
@@ -20373,7 +22014,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                             Draw_Over_From_Surface(Draw_Extra_Surface, 0, frame_zoom, 0, 0, true, true);
                         break;
                     }
-                    case 6:
+                    case 6: 
                     {
                         switch (MycRP.Draw_Mode)
                         {
@@ -20410,7 +22051,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                             Draw_Over_From_Surface(Draw_Extra_Surface, 0, frame_zoom, 0, 0, true, true);
                         break;
                     }
-                    case 7:
+                    case 7: 
                     {
                         if (!(GetKeyState('W') & 0x8000) || (pfr[(acFrame * fh + MouseFinPosy) * fw + MouseFinPosx] != 0))
                             Draw_Extra_Surface[MouseFinPosx + MouseFinPosy * fw] = 1;
@@ -20421,7 +22062,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                             Draw_Over_From_Surface(Draw_Extra_Surface, 0, frame_zoom, 0, 0, true, true);
                         break;
                     }
-                    case 8:
+                    case 8: 
                     {
                         bool shapeselect = false;
                         if (GetKeyState('W') & 0x8000) shapeselect = true;
@@ -20512,7 +22153,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         }
         if (!IsIconic(hSprites))
         {
-            if (Zoom_Pushed_Sprite)// && ((nEditExtraResolutionS && MycRom.fHeightX == 64) || (!nEditExtraResolutionS && MycRom.fHeight == 64)))
+            if (Zoom_Pushed_Sprite)
                 Draw_Sprite(2 * sprite_zoom, offset_sprite_x, offset_sprite_y);
             else Draw_Sprite(sprite_zoom, 0, 0);
             if (GetForegroundWindow() == hSprites)
@@ -20578,7 +22219,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                             }
                         }
                         SetRenderDrawColor(mselcol, mselcol, mselcol, mselcol);
-                        if (Zoom_Pushed_Sprite)// && ((nEditExtraResolutionS && MycRom.fHeightX == 64) || (!nEditExtraResolutionS && MycRom.fHeight == 64)))
+                        if (Zoom_Pushed_Sprite)
                             Draw_Over_From_Surface2(Draw_Extra_Surface2, 0, (float)2 * sprite_zoom, offset_sprite_x, offset_sprite_y, true, true);
                         else
                             Draw_Over_From_Surface2(Draw_Extra_Surface2, 0, (float)sprite_zoom, 0, 0, true, true);
@@ -20587,7 +22228,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                     {
                         drawrectangle2(MouseIniPosx, MouseIniPosy, MouseFinPosx, MouseFinPosy, Draw_Extra_Surface2, 1, TRUE);
                         SetRenderDrawColor(mselcol, 0, mselcol, mselcol);
-                        if (Zoom_Pushed_Sprite)// && ((nEditExtraResolutionS && MycRom.fHeightX == 64) || (!nEditExtraResolutionS && MycRom.fHeight == 64)))
+                        if (Zoom_Pushed_Sprite)
                             Draw_Over_From_Surface2(Draw_Extra_Surface2, 0, (float)2 * sprite_zoom, offset_sprite_x, offset_sprite_y, true, true);
                         else
                             Draw_Over_From_Surface2(Draw_Extra_Surface2, 0, (float)sprite_zoom, 0, 0, true, true);
@@ -20648,6 +22289,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     DeleteObject(hInactiveBrush);
     DeleteObject(hActiveBrush);
     SaveVars();
+    Serum_ReleaseDLL();
     SavePaths();
     free(RedoSaveN);
     free(UndoSaveN);

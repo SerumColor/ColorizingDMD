@@ -4,8 +4,8 @@
 
 #define FRAME_STRIP_W_MARGIN 15
 #define FRAME_STRIP_H_MARGIN 20
-#define FRAME_STRIP_HEIGHT (64 + 2 * FRAME_STRIP_H_MARGIN)
-#define FRAME_STRIP_HEIGHT2 (64 + 2 * FRAME_STRIP_H_MARGIN)
+#define FRAME_STRIP_HEIGHT (64 + 2 * FRAME_STRIP_H_MARGIN) 
+#define FRAME_STRIP_HEIGHT2 (64 + 2 * FRAME_STRIP_H_MARGIN) 
 #define FRAME_STRIP_SLIDER_MARGIN 10
 #define SPRITE_INTERVAL 10
 #define DIGIT_TEXTURE_W 20
@@ -16,7 +16,7 @@
 #define NEXT_KEY_TIMER_INT 50
 #define MARGIN_PALETTE_X 20
 #define MARGIN_PALETTE_Y 100
-#define AUTOSAVE_TICKS 600000
+#define AUTOSAVE_TICKS 600000 
 
 void Frame_Strip_Update(void);
 LRESULT CALLBACK Wait_Proc(HWND hWndDlg, UINT Msg, WPARAM wParam, LPARAM lParam);
@@ -58,7 +58,7 @@ bool SetIcon(HWND ButHWND, UINT ButIco);
 void UpdateFrameBG(void);
 void AddBackground(void);
 void DeleteBackground(void);
-void cprintf(bool isFlash, const char* format, ...);
+void cprintf(bool isFlash, const char* format, ...); 
 void SetCommonButton(bool ison);
 void SetZoomButton(bool ison);
 void SetZoomSpriteButton(bool ison);

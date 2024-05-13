@@ -19,7 +19,7 @@ bool Load_GIFski_DLL(void)
     hGIFDLL = LoadLibraryA("gifski.dll");
     if (hGIFDLL == NULL)
     {
-        // Handle error
+        
         OutputDebugStringA("Unable to open the gifski.dll file");
         return false;
     }
