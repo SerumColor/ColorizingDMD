@@ -1,7 +1,7 @@
-//{{NO_DEPENDENCIES}}
-// fichier Include Microsoft Visual C++.
-// Utilisé par ColorizingDMD.rc
-//
+
+
+
+
 #define IDC_MYICON                      2
 #define IDD_COLORIZINGDMD_DIALOG        102
 #define IDI_CROM                        103
@@ -429,8 +429,8 @@
 #define IDC_FRAME64                     1217
 #define IDC_STATIC                      -1
 
-// Next default values for new objects
-// 
+
+
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
