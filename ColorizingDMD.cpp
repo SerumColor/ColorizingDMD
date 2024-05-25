@@ -39,6 +39,7 @@ using namespace cv;
 #include <wincodec.h>
 #include "serumdll.h"
 #include "ZeDMD.h"
+#include <dwmapi.h>
 
 #pragma endregion Includes
 
@@ -46,7 +47,7 @@ using namespace cv;
 
 #define MAJOR_VERSION 3
 #define MINOR_VERSION 0
-#define PATCH_VERSION 10
+#define PATCH_VERSION 17
 
 static TCHAR szWindowClass[] = _T("ColorizingDMD");
 static TCHAR szWindowClass2[] = _T("ChildWin");
@@ -137,10 +138,6 @@ int crop_iOsizeW = 0, crop_iOsizeH = 0;
 int crop_fOsizeW = 0, crop_fOsizeH = 0; 
 int crop_ioffsetx = 0, crop_ioffsety = 0, crop_foffsetx = 0, crop_foffsety = 0; 
 int crop_width = 0, crop_height = 0;
-/*int crop_scroll_mode = 0; 
-bool crop_scroll_invert = false;
-int crop_scroll_extend = 0; 
-*/
 int image_posx = 0, image_posy = 0; 
 int image_sizeW = 10, image_sizeH = 10; 
 bool image_mouseLpressed = false, image_mouseRpressed = false; 
@@ -5522,7 +5519,7 @@ void drawcircle2(int xc, int yc, int r, UINT8* surface, UINT8 color, BOOL filled
 void drawrectangle(int xd, int yd, int xf, int yf, UINT8* surface, UINT8 color, BOOL isfilled, bool coloronly, UINT16* frame)
 {
     UINT fw, fh;
-    if (nEditExtraResolutionF)
+    if (nEditExtraResolutionF && Edit_Mode==1)
     {
         fw = MycRom.fWidthX;
         fh = MycRom.fHeightX;
@@ -7349,9 +7346,6 @@ bool CreateGIF(char* GIFname, UINT8* pimages, UINT8* pimagesX, UINT16* protation
             isrotactiveX[tj] = pimagesX && pacrotX[tj * MAX_LENGTH_COLOR_ROTATION] > 0;
             if (isrotactiveX[tj]) nrotX++;
         }
-            /*UINT16 lesrot[MAX_COLOR_ROTATIONN * MAX_LENGTH_COLOR_ROTATION]; 
-        UINT16 lesrotX[MAX_COLOR_ROTATIONN * MAX_LENGTH_COLOR_ROTATION]; 
-        */
         if (poimages)
         {
             for (UINT tj = 0; tj < MycRom.fHeight * MUL_SIZE_GIF; tj++)
@@ -7707,16 +7701,18 @@ void SaveAnimatedGif(void)
 }
 
 bool isTesterfr32, isTesterfr64;
-
 UINT16* ptesternewfr32, * ptesternewfr64;
 UINT8* ptesterbuffer32, * ptesterbuffer64;
 #define MUL_TESTER_PIXEL_SIZE 5
 
+HWND hTester;
+char TesterExtraStr[64] = { 0 };
+char TesterpreExtraStr[64] = { 0 };
 
-
-
-LRESULT CALLBACK FrameWndProc(HWND hwDlg, UINT message, WPARAM wParam, LPARAM lParam) {
-    switch (message) {
+LRESULT CALLBACK FrameWndProc(HWND hwDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    switch (message)
+    {
     case WM_CLOSE:
         
         return 0;
@@ -7737,8 +7733,10 @@ LRESULT CALLBACK FrameWndProc(HWND hwDlg, UINT message, WPARAM wParam, LPARAM lP
             fw = MycRom.fWidthX;
             fh = MycRom.fHeightX;
         }
-        imageWidth = MUL_TESTER_PIXEL_SIZE * fw; 
-        imageHeight = MUL_TESTER_PIXEL_SIZE * fh; 
+        int Mul_Tester_Pixel = MUL_TESTER_PIXEL_SIZE;
+        if (hwDlg == hFrame32) Mul_Tester_Pixel *= 2;
+        imageWidth = Mul_Tester_Pixel * fw; 
+        imageHeight = Mul_Tester_Pixel * fh; 
         RECT clientRect;
         GetClientRect(hwDlg, &clientRect);
         int clientWidth = clientRect.right - clientRect.left;
@@ -7746,7 +7744,31 @@ LRESULT CALLBACK FrameWndProc(HWND hwDlg, UINT message, WPARAM wParam, LPARAM lP
         UINT8* ptnf;
         if (hwDlg == hFrame32) ptnf = ptesterbuffer32; else ptnf = ptesterbuffer64;
         memset(ptnf, 0, imageWidth * imageHeight * 4);
-        if ((hwDlg == hFrame32 && ptesternewfr32 && isTesterfr32) || (hwDlg == hFrame64 && ptesternewfr64 && isTesterfr64))
+        
+        if (hwDlg == hFrame32 && ptesternewfr32 && !isTesterfr32) 
+        {
+            SetWindowTextA(hwDlg, "Frame 64P downscaled");
+            DownscaleRGB565Frame(ptesternewfr64, ptesternewfr32, MycRom.fWidth);
+            InvalidateRect(GetDlgItem(hTester, IDC_ISEXTRA), NULL, FALSE);
+        }
+        else if (hwDlg == hFrame64 && ptesternewfr64 && !isTesterfr64) 
+        {
+            SetWindowTextA(hwDlg, "Frame 32P upscaled");
+            UpscaleRGB565Frame(ptesternewfr32, ptesternewfr64, MycRom.fWidth);
+            InvalidateRect(GetDlgItem(hTester, IDC_ISEXTRA), NULL, FALSE);
+        }
+        else if (hwDlg == hFrame32)
+        {
+            SetWindowTextA(hwDlg, "Frame 32P");
+            InvalidateRect(GetDlgItem(hTester, IDC_ISEXTRA), NULL, FALSE);
+        }
+        else if (hwDlg == hFrame64)
+        {
+            SetWindowTextA(hwDlg, "Frame 64P");
+            InvalidateRect(GetDlgItem(hTester, IDC_ISEXTRA), NULL, FALSE);
+        }
+        
+        if ((hwDlg == hFrame32 && ptesternewfr32) || (hwDlg == hFrame64 && ptesternewfr64))
         {
             for (UINT tj = 0; tj < fh; tj++)
             {
@@ -7759,20 +7781,22 @@ LRESULT CALLBACK FrameWndProc(HWND hwDlg, UINT message, WPARAM wParam, LPARAM lP
                     pixcol[0] = pixcol[2];
                     pixcol[2] = pixcol[3];
                     pixcol[3] = 255;
-                    for (int tl = 0; tl < MUL_TESTER_PIXEL_SIZE; tl++)
+                    for (int tl = 0; tl < Mul_Tester_Pixel; tl++)
                     {
-                        for (int tk = 0; tk < MUL_TESTER_PIXEL_SIZE; tk++)
+                        for (int tk = 0; tk < Mul_Tester_Pixel; tk++)
                         {
-                            if ((tl > 0 && tk > 0 && tl < MUL_TESTER_PIXEL_SIZE - 2 && tk < MUL_TESTER_PIXEL_SIZE - 2) ||
-                                ((tl == 0 || tl == MUL_TESTER_PIXEL_SIZE - 2) && tk > 0 && tk < MUL_TESTER_PIXEL_SIZE - 2) ||
-                                ((tk == 0 || tk == MUL_TESTER_PIXEL_SIZE - 2) && tl > 0 && tl < MUL_TESTER_PIXEL_SIZE - 2))
+                            if ((tl > 0 && tk > 0 && tl < Mul_Tester_Pixel - 2 && tk < Mul_Tester_Pixel - 2) ||
+                                ((tl == 0 || tl == Mul_Tester_Pixel - 2) && tk > 0 && tk < Mul_Tester_Pixel - 2) ||
+                                ((tk == 0 || tk == Mul_Tester_Pixel - 2) && tl > 0 && tl < Mul_Tester_Pixel - 2))
                             {
-                                memcpy(&ptnf[((tj * MUL_TESTER_PIXEL_SIZE + tl) * fw * MUL_TESTER_PIXEL_SIZE + ti * MUL_TESTER_PIXEL_SIZE + tk) * 4], pixcol, 4);
+                                memcpy(&ptnf[((tj * Mul_Tester_Pixel + tl) * fw * Mul_Tester_Pixel + ti * Mul_Tester_Pixel + tk) * 4], pixcol, 4);
                             }
                         }
                     }
                 }
             }
+            
+            
         }
 
         bitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
@@ -7863,6 +7887,13 @@ void SendFrameToTester2(unsigned int nofr, UINT8* pframes)
     
     ColorizeAFrame(&pframes[nofr * MycRom.fWidth * MycRom.fHeight], &ptesternewfr32, &ptesternewfr64, &testerframeID, &isTesterfr32, &isTesterfr64);
     SendToZeDMD();
+    RECT rect;
+    GetClientRect(hTester, &rect);
+    rect.top = 100;
+    InvalidateRect(hTester, &rect, TRUE);
+    InvalidateRect(GetDlgItem(hTester, IDC_ISEXTRA), NULL, FALSE);
+    InvalidateRect(GetDlgItem(hTester, IDC_ISEXTRA), NULL, FALSE);
+    InvalidateRect(GetDlgItem(hTester, IDC_ISEXTRAE), NULL, FALSE);
     InvalidateRect(hFrame32, NULL, FALSE);
     InvalidateRect(hFrame64, NULL, FALSE);
     
@@ -7897,12 +7928,12 @@ bool CreateFrameWindows(HWND hParent)
     RECT rc;
     if (MycRom.fHeight == 32)
     {
-        rc = { 0, 0, (LONG)MycRom.fWidth * MUL_TESTER_PIXEL_SIZE, (LONG)MycRom.fHeight * MUL_TESTER_PIXEL_SIZE };
+        rc = { 0, 0, (LONG)MycRom.fWidth * 2*MUL_TESTER_PIXEL_SIZE, (LONG)MycRom.fHeight * 2*MUL_TESTER_PIXEL_SIZE };
         AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME & ~WS_MAXIMIZEBOX, FALSE);
     }
     else
     {
-        rc = { 0, 0, (LONG)MycRom.fWidthX * MUL_TESTER_PIXEL_SIZE, (LONG)MycRom.fHeightX * MUL_TESTER_PIXEL_SIZE };
+        rc = { 0, 0, (LONG)MycRom.fWidthX * 2*MUL_TESTER_PIXEL_SIZE, (LONG)MycRom.fHeightX * 2*MUL_TESTER_PIXEL_SIZE };
         AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME & ~WS_MAXIMIZEBOX, FALSE);
     }
 
@@ -7940,13 +7971,13 @@ bool CreateFrameWindows(HWND hParent)
     ptesterbuffer64 = ptesterbuffer32 = NULL;
     if (MycRom.fHeight == 32)
     {
-        ptesterbuffer32 = (UINT8*)malloc(4 * MycRom.fWidth * MUL_TESTER_PIXEL_SIZE * MycRom.fHeight * MUL_TESTER_PIXEL_SIZE);
+        ptesterbuffer32 = (UINT8*)malloc(4 * MycRom.fWidth * 2*MUL_TESTER_PIXEL_SIZE * MycRom.fHeight * 2*MUL_TESTER_PIXEL_SIZE);
         ptesterbuffer64 = (UINT8*)malloc(4 * MycRom.fWidthX * MUL_TESTER_PIXEL_SIZE * MycRom.fHeightX * MUL_TESTER_PIXEL_SIZE);
     }
     else
     {
         ptesterbuffer64 = (UINT8*)malloc(4 * MycRom.fWidth * MUL_TESTER_PIXEL_SIZE * MycRom.fHeight * MUL_TESTER_PIXEL_SIZE);
-        ptesterbuffer32 = (UINT8*)malloc(4 * MycRom.fWidthX * MUL_TESTER_PIXEL_SIZE * MycRom.fHeightX * MUL_TESTER_PIXEL_SIZE);
+        ptesterbuffer32 = (UINT8*)malloc(4 * MycRom.fWidthX * 2*MUL_TESTER_PIXEL_SIZE * MycRom.fHeightX * 2*MUL_TESTER_PIXEL_SIZE);
     }
     if (!ptesterbuffer32 || !ptesterbuffer64)
     {
@@ -7982,6 +8013,11 @@ LRESULT CALLBACK Tester_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
 {
     HWND hChFr = GetDlgItem(hwDlg, IDC_CHOOSEFRAME);
     char cFrameID[64];
+    if (strcmp(TesterExtraStr, TesterpreExtraStr) != 0)
+    {
+        SetDlgItemTextA(hwDlg, IDC_ISEXTRAE, TesterExtraStr);
+        strcpy_s(TesterpreExtraStr, 64, TesterExtraStr);
+    }
     switch (Msg)
     {
         case WM_INITDIALOG:
@@ -7992,13 +8028,14 @@ LRESULT CALLBACK Tester_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
                 DestroyWindow(hwDlg);
                 return TRUE;
             }
+            strcpy_s(TesterExtraStr, 64, "");
+            hTester = hwDlg;
             SetDlgItemTextA(hwDlg, IDC_INFO, "Navigate through the selected frames:");
             SetTesterRangeAndTicKs(hChFr, nSelFrames);
             char tbuf[128];
             GetIDFrameText(testerframeID, cFrameID);
             sprintf_s(tbuf, 128, "Frame Tester                   Current frame: %i / Total: %i       %s", 0, nSelFrames, cFrameID);
             SetWindowTextA(hwDlg, tbuf);
-            InvalidateRect(hwDlg, NULL, FALSE);
             TesterSelectionMode = true;
             Testerplayspeed = 1;
             TesterPlay = 0;
@@ -8103,8 +8140,8 @@ LRESULT CALLBACK Tester_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
                     }
                 }
                 SendMessage(hChFr, TBM_SETPOS, TRUE, frpos);
-                SetTimer(hwDlg, 1, 16, NULL);
                 SendMessage(hwDlg, WM_HSCROLL, 0, 0);
+                SetTimer(hwDlg, 1, 16, NULL);
             }
             if (ColorRotateAFrame(&ptesternewfr32, NULL, &ptesternewfr64, NULL))
             {
@@ -8119,8 +8156,8 @@ LRESULT CALLBACK Tester_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
             
             PAINTSTRUCT ps;
             BITMAPINFO bitmapInfo = { 0 };
-            int imageWidth = 512; 
-            int imageHeight = 128; 
+            int imageWidth = 512;
+            int imageHeight = 128;
 
             RECT clientRect;
             GetClientRect(hwDlg, &clientRect);
@@ -8153,7 +8190,33 @@ LRESULT CALLBACK Tester_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
             DeleteDC(memDC);
 
             EndPaint(hwDlg, &ps);
-            return 0;
+            return TRUE;
+        }
+        case WM_DRAWITEM:
+        {
+            
+            LPDRAWITEMSTRUCT pDIS = (LPDRAWITEMSTRUCT)lParam;
+            if (pDIS->CtlID != IDC_ISEXTRA) return FALSE;
+            RECT rcColors;
+            GetWindowRect(GetDlgItem(hwDlg, IDC_ISEXTRA), &rcColors);
+            rcColors.right -= rcColors.left;
+            rcColors.bottom -= rcColors.top;
+            rcColors.left = 0;
+            rcColors.top = 0;
+            HBRUSH hbr;
+            if (!isTesterfr32 || !isTesterfr64)
+            {
+                hbr = CreateSolidBrush(RGB(255, 0, 0));
+                strcpy_s(TesterExtraStr, 64, "No Extra Res.");
+            }
+            else
+            {
+                hbr = CreateSolidBrush(RGB(0, 255, 0));
+                strcpy_s(TesterExtraStr, 64, "Extra Res. Avail.");
+            }
+            FillRect(pDIS->hDC, &rcColors, hbr);
+            DeleteObject(hbr);
+            return TRUE;
         }
         case WM_COMMAND:
         {
@@ -8349,30 +8412,6 @@ LRESULT CALLBACK Tester_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
                 }
             }
         }
-        /*case WM_CLOSE:
-        {
-            KillTimer(hwDlg, 1);
-            WINDOWPLACEMENT wp;
-            wp.length = sizeof(WINDOWPLACEMENT);
-            GetWindowPlacement(hwDlg, &wp);
-            Tester_Posx = wp.rcNormalPosition.left;
-            Tester_Posy = wp.rcNormalPosition.top;
-            SaveWindowPosition();
-            
-            
-            if (pTesterFrames)
-            {
-                free(pTesterFrames);
-                pTesterFrames = NULL;
-            }
-            if (pTesterTimecodes)
-            {
-                free(pTesterTimecodes);
-                pTesterTimecodes = NULL;
-            }
-            return 0;
-        }
-        */
         case WM_HSCROLL:
         {
             char tbuf[128];
@@ -8380,14 +8419,12 @@ LRESULT CALLBACK Tester_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
             if (TesterSelectionMode)
             {
                 SendFrameToTester2(SelFrames[frpos], MycRP.oFrames);
-                InvalidateRect(hwDlg, NULL, FALSE);
                 GetIDFrameText(testerframeID, cFrameID);
                 sprintf_s(tbuf, 128, "Frame Tester                   Current frame: %i / Total: %i       %s", frpos, nSelFrames, cFrameID);
             }
             else
             {
                 SendFrameToTester2(frpos, pTesterFrames);
-                InvalidateRect(hwDlg, NULL, FALSE);
                 GetIDFrameText(testerframeID, cFrameID);
                 sprintf_s(tbuf, 128, "Frame Tester                   Current frame: %i / Total: %i       %s", frpos, nTesterFrames, cFrameID);
             }
@@ -8448,16 +8485,6 @@ void TestSelectedFrames(void)
         }
     }
     Save_cRom(false, true, tbuf);
-    /*char tbuf2[MAX_PATH];
-    strcat_s(tbuf, MAX_PATH, MycRom.name);
-    strcat_s(tbuf, MAX_PATH, ".cRZ");
-    sprintf_s(tbuf2, MAX_PATH, "%s%s.cRZ", Dir_Serum, MycRom.name);
-    if (!CopyFileA(tbuf2, tbuf, FALSE))
-    {
-        MessageBoxA(hWnd, "Can't copy the cRZ file in the altcolor\\rom_name directory", "Failed", MB_OK);
-        return;
-    }
-    */
     
     if (!InitLibSerum(Dir_VP, MycRom.name))
     {
@@ -10756,14 +10783,6 @@ bool CopyTXTFrames2Frame(UINT nFrames, sFrames* pFrames)
     MycRom.nSprites = 0;
     MycRom.nBackgrounds= 0;
     
-    /*MycRom.cPal = (UINT8*)malloc(nF * sizepalette);
-    if (!MycRom.cPal)
-    {
-        Free_cRom();
-        cprintf(true, "Unable to allocate memory for colorized palettes");
-        return false;
-    }
-    */
     MycRom.cFrames = (UINT16*)malloc(nF * MycRom.fWidth * MycRom.fHeight * sizeof(UINT16));
     if (!MycRom.cFrames)
     {
@@ -10912,17 +10931,6 @@ bool CopyTXTFrames2Frame(UINT nFrames, sFrames* pFrames)
             char* psFr = pFrames[tk].ptr;
             UINT8* pdoFr = &MycRP.oFrames[MycRom.fWidth * MycRom.fHeight * MycRom.nFrames];
             UINT16* pdcFr = &MycRom.cFrames[MycRom.fWidth * MycRom.fHeight * MycRom.nFrames];
-/*            if (tk < nFrames - 1)
-            {
-                UINT32 time1 = pFrames[tk].timecode;
-                UINT32 time2 = pFrames[tk + 1].timecode;
-                if (time2 < time1) MycRP.FrameDuration[MycRom.nFrames] = 0;
-                else if (time2 - time1 > 30000) MycRP.FrameDuration[MycRom.nFrames] = 0;
-                else MycRP.FrameDuration[MycRom.nFrames] = time2 - time1;
-                if (filter_time && (filter_length > MycRP.FrameDuration[MycRom.nFrames])) pFrames[tk].active = FALSE;
-            }
-            else MycRP.FrameDuration[MycRom.nFrames] = 0;
-            */
             memset(MycRP.Palette, 0, sizeof(UINT16) * N_PALETTES * 64);
             memset(MycRP.PalNames, 0, N_PALETTES * 64);
             Init_cFrame_Palette2();
@@ -10990,14 +10998,6 @@ bool AddTXTFrames2Frame(UINT nFrames, sFrames* pFrames)
     memset(&MycRom.isExtraFrame[MycRom.nFrames], 0, nF * sizeof(UINT8));
     
     
-    /*MycRom.cPal = (UINT8*)realloc(MycRom.cPal, (nF + MycRom.nFrames) * sizepalette);
-    if (!MycRom.cPal)
-    {
-        Free_cRom();
-        cprintf(true, "Unable to reallocate memory for colorized palettes");
-        return false;
-    }
-    */
     MycRom.cFrames = (UINT16*)realloc(MycRom.cFrames, (nF + MycRom.nFrames) * MycRom.fWidth * MycRom.fHeight * sizeof(UINT16));
     if (!MycRom.cFrames)
     {
@@ -11133,16 +11133,6 @@ bool AddTXTFrames2Frame(UINT nFrames, sFrames* pFrames)
             UINT8* psFr = (UINT8*)pFrames[tk].ptr;
             UINT8* pdoFr = &MycRP.oFrames[MycRom.fWidth * MycRom.fHeight * MycRom.nFrames];
             UINT16* pdcFr = &MycRom.cFrames[MycRom.fWidth * MycRom.fHeight * MycRom.nFrames];
-/*            if (tk < nFrames - 1)
-            {
-                UINT32 time1 = pFrames[tk].timecode;
-                UINT32 time2 = pFrames[tk + 1].timecode;
-                if (time2 < time1) MycRP.FrameDuration[MycRom.nFrames] = 0;
-                else if (time2 - time1 > 30000) MycRP.FrameDuration[MycRom.nFrames] = 0;
-                else MycRP.FrameDuration[MycRom.nFrames] = time2 - time1;
-            }
-            else MycRP.FrameDuration[MycRom.nFrames] = 0;
-            */
             Init_cFrame_Palette2();
             for (unsigned int tj = 0; tj < MycRom.fHeight * MycRom.fWidth; tj++)
             {
@@ -11519,9 +11509,6 @@ void SortSections(void)
 void MoveSection(int nosec, int decalage)
 {
     if (nosec == LB_ERR) return;
-/*	UINT32		Section_Firsts[MAX_SECTIONS]; 
-	char		Section_Names[MAX_SECTIONS * SIZE_SECTION_NAMES]; 
-*/
     UINT32 sfirst;
     char sName[SIZE_SECTION_NAMES];
     sfirst = MycRP.Section_Firsts[nosec + decalage];
@@ -12212,19 +12199,6 @@ LRESULT CALLBACK WndProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
                     if (tj > ymax) ymax = tj;
                 }
             }
-            /*int tx, ty;
-            glfwGetWindowPos(glfwframe, &tx, &ty);
-            if (Zoom_Pushed && ((nEditExtraResolutionF && MycRom.fHeightX == 64) || (!nEditExtraResolutionF && MycRom.fHeight == 64)))
-            {
-                paste_centerx = (int)(tx + 2 * frame_zoom * (xmax + xmin) / 2);
-                paste_centery = (int)(ty + 2 * frame_zoom * (ymax + ymin) / 2);
-            }
-            else
-            {
-                paste_centerx = (int)(tx + frame_zoom * (xmax + xmin) / 2);
-                paste_centery = (int)(ty + frame_zoom * (ymax + ymin) / 2);
-            }
-            */
         }
         break;
     }
@@ -12441,14 +12415,6 @@ void activateColSet(int noSet)
     MycRP.activeColSet[noSet + MycRP.preColSet] = true;
     EnableWindow(GetDlgItem(hColSet, noSet + IDC_NOMCOLSET1), TRUE);
 }
-/*void activateColRot(int noSet)
-{
-    MycRom.ColorRotations[acFrame * 3 * MAX_COLOR_ROTATION + noSet * 3 + preColRot] = Ini_Gradient_Color;
-    MycRom.ColorRotations[acFrame * 3 * MAX_COLOR_ROTATION + noSet * 3 + preColRot + 1] = Fin_Gradient_Color;
-    MycRom.ColorRotations[acFrame * 3 * MAX_COLOR_ROTATION + noSet * 3 + preColRot + 2] = 50;
-    EnableWindow(GetDlgItem(hColSet, noSet + IDC_NOMCOLSET1), TRUE);
-}
-*/
 
 
 
@@ -12801,31 +12767,6 @@ INT_PTR AskName_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
     }
     return FALSE;
 }
-
-/*LRESULT CALLBACK CBList_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
-{
-    switch (message)
-    {
-        case WM_RBUTTONDOWN:
-        {
-            if (MycRom.name[0] == 0) return TRUE;
-            POINT tp;
-            GetCursorPos(&tp);
-            ScreenToClient(hDlg, &tp);
-            int noItem=(int)SendMessage(hDlg, LB_ITEMFROMPOINT, 0, MAKELPARAM(tp.x, tp.y));
-            if (noItem == 0) return TRUE;
-            strcpy_s(askname_res, 64, &MycRP.Mask_Names[SIZE_MASK_NAME * (noItem - 1)]);
-            if (DialogBox(hInst, MAKEINTRESOURCE(IDD_ASKNAME), hDlg, (DLGPROC)AskName_Proc) == IDOK)
-            {
-                strcpy_s(&MycRP.Mask_Names[SIZE_MASK_NAME * (noItem - 1)], SIZE_MASK_NAME-1, askname_res);
-                UpdateMaskList();
-            }
-            return TRUE;
-        }
-    }
-    return DefSubclassProc(hDlg,message,wParam,lParam);
-}
-*/
 
 HBRUSH CreateGradientBrush(UINT icol, UINT fcol, HDC hDC,LPRECT prect)
 {
@@ -13201,6 +13142,7 @@ void ShadowSelection(WORD wdir)
     UINT16* pcfr;
     UINT8* pdynm;
     UINT fw, fh;
+    UpdateFSneeded = true;
     if (nEditExtraResolutionF)
     {
         fw = MycRom.fWidthX;
@@ -13343,10 +13285,6 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
     {
         case WM_INITDIALOG:
         {
-            /*HWND hwndChild = GetWindow(hDlg, GW_CHILD); 
-            while (hwndChild != NULL)
-            {
-            */
             SetWindowSubclass(GetDlgItem(hDlg, IDC_NEW), ButtonSubclassProc, 0, 0);
             SetWindowSubclass(GetDlgItem(hDlg, IDC_ADDTXT), ButtonSubclassProc, 0, 0);
             SetWindowSubclass(GetDlgItem(hDlg, IDC_OPEN), ButtonSubclassProc, 0, 0);
@@ -13922,6 +13860,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                         if (!nEditExtraResolutionF) memcpy(&MycRom.Dyna4Cols[SelFrames[ti] * MAX_DYNA_SETS_PER_FRAMEN * MycRom.noColors], &MycRom.Dyna4Cols[acFrame * MAX_DYNA_SETS_PER_FRAMEN * MycRom.noColors], MAX_DYNA_SETS_PER_FRAMEN * MycRom.noColors * sizeof(UINT16));
                         else memcpy(&MycRom.Dyna4ColsX[SelFrames[ti] * MAX_DYNA_SETS_PER_FRAMEN * MycRom.noColors], &MycRom.Dyna4ColsX[acFrame * MAX_DYNA_SETS_PER_FRAMEN * MycRom.noColors], MAX_DYNA_SETS_PER_FRAMEN* MycRom.noColors * sizeof(UINT16));
                     }
+                    UpdateFSneeded = true;
                     return TRUE;
                 }
                 case IDC_COLPICK:
@@ -14365,19 +14304,6 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                             if (tj > ymax) ymax = tj;
                         }
                     }
-                    /*int tx, ty;
-                    glfwGetWindowPos(glfwframe, &tx, &ty);
-                    if (Zoom_Pushed && ((nEditExtraResolutionF && MycRom.fHeightX == 64) || (!nEditExtraResolutionF && MycRom.fHeight == 64)))
-                    {
-                        paste_centerx = (int)(tx + 2 * frame_zoom * (xmax + xmin) / 2);
-                        paste_centery = (int)(ty + 2 * frame_zoom * (ymax + ymin) / 2);
-                    }
-                    else
-                    {
-                        paste_centerx = (int)(tx + frame_zoom * (xmax + xmin) / 2);
-                        paste_centery = (int)(ty + frame_zoom * (ymax + ymin) / 2);
-                    }
-                    */
                     return TRUE;
                 }
                 case IDC_ADDSECTION:
@@ -14470,6 +14396,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                         }
                     }
                     for (UINT ti = IDC_DYNACOL1; ti <= IDC_DYNACOL16; ti++) InvalidateRect(GetDlgItem(hwTB, ti), NULL, TRUE);
+                    UpdateFSneeded = true;
                     return TRUE;
                 }
                 case IDC_INVERTSEL:
@@ -14865,7 +14792,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                     {
                         if (SelFrames[ti] == acFrame) continue;
                         if (nEditExtraResolutionF && MycRom.isExtraFrame[SelFrames[ti]] == 0) continue;
-                        memcpy(&pdync[SelFrames[ti] * MAX_DYNA_SETS_PER_FRAMEN * MycRom.noColors], &pdync[acFrame * MAX_DYNA_SETS_PER_FRAMEN * MycRom.noColors], MAX_DYNA_SETS_PER_FRAMEN* MycRom.noColors);
+                        memcpy(&pdync[SelFrames[ti] * MAX_DYNA_SETS_PER_FRAMEN * MycRom.noColors], &pdync[acFrame * MAX_DYNA_SETS_PER_FRAMEN * MycRom.noColors], MAX_DYNA_SETS_PER_FRAMEN* MycRom.noColors * sizeof(UINT16));
                         memcpy(&pdynm[SelFrames[ti] * fwmfh], &pdynm[acFrame * fwmfh], fwmfh);
                     }
                     UpdateFSneeded = true;
@@ -15579,26 +15506,6 @@ INT_PTR CALLBACK Toolbar_Proc2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                 if ((int)acFrame < PreFrameInStrip) PreFrameInStrip = acFrame;
                 UpdateFSneeded = true;
                 UpdateNewacFrame();
-                /*
-                
-                if (MycRP.SpriteRect[4 * acSprite] < 0xffff)
-                {
-                    memset(Copy_Mask, 0, MycRom.fWidth * MycRom.fHeight);
-                    for (UINT tj = MycRP.SpriteRect[4 * acSprite + 1]; tj <= MycRP.SpriteRect[4 * acSprite + 3]; tj++)
-                    {
-                        for (UINT ti = MycRP.SpriteRect[4 * acSprite]; ti <= MycRP.SpriteRect[4 * acSprite + 2]; ti++)
-                        {
-                            UINT i = ti, j = tj;
-                            if (MycRP.SpriteRectMirror[2 * acSprite] == TRUE) i = MycRP.SpriteRect[4 * acSprite + 2] - (ti - MycRP.SpriteRect[4 * acSprite]);
-                            if (MycRP.SpriteRectMirror[2 * acSprite + 1] == TRUE) j = MycRP.SpriteRect[4 * acSprite + 3] - (tj - MycRP.SpriteRect[4 * acSprite + 1]);
-                            if ((MycRom.SpriteDescriptions[acSprite * MAX_SPRITE_SIZE * MAX_SPRITE_SIZE + (tj - MycRP.SpriteRect[4 * acSprite + 1]) * MAX_SPRITE_SIZE + ti - MycRP.SpriteRect[4 * acSprite]] & 0x8000) == 0)
-                            {
-                                Copy_Mask[i + j * MycRom.fWidth] = 1;
-                            }
-                        }
-                    }
-                }
-                */
                 return TRUE;
             }
             case IDC_SPRITELIST2:
@@ -16293,35 +16200,6 @@ void CopyImageTo1Selection(cv::Mat tmp32, cv::Mat tmp64, UINT nofr)
         }
     }
 }
-/*void CopyImageTo1Selection(cv::Mat mat, UINT nofr)
-{
-    UINT fw, fh;
-    UINT16* pfr;
-    if (ExtraResFClicked && MycRom.isExtraFrame[nofr] > 0)
-    {
-        fw = MycRom.fWidthX;
-        fh = MycRom.fHeightX;
-        pfr = &MycRom.cFramesX[nofr * fw * fh];
-    }
-    else
-    {
-        fw = MycRom.fWidth;
-        fh = MycRom.fHeight;
-        pfr = &MycRom.cFrames[nofr * fw * fh];
-    }
-    for (UINT tj = 0; tj < HiSelection; tj++)
-    {
-        for (UINT ti = 0; ti < WiSelection; ti++)
-        {
-            if (Copy_Mask[(tj + YiSelection) * fw + ti + XiSelection] > 0)
-            {
-                cv::Vec3b color = mat.at<cv::Vec3b>(tj, ti);
-                pfr[(tj + YiSelection) * fw + ti + XiSelection] = rgb888_to_rgb565(color[2], color[1], color[0]);
-            }
-        }
-    }
-}
-*/
 
 
 
@@ -16630,25 +16508,6 @@ void ScrollCopy(HWND hDlg)
     UINT tSelFrames[MAX_SEL_FRAMES];
     for (UINT ti = 0; ti < nSelFrames; ti++) tSelFrames[ti] = SelFrames[ti];
     BubbleSort(tSelFrames, nSelFrames);
-    /*UINT preframe = acFrame, derframe = acFrame;
-    bool frfound = true;
-    while (frfound)
-    {
-        frfound = false;
-        for (UINT ti = 0; ti < nSelFrames; ti++)
-        {
-            if (derframe < MycRom.nFrames - 1)
-            {
-                if (SelFrames[ti] == derframe + 1)
-                {
-                    derframe++;
-                    frfound = true;
-                }
-            }
-        }
-    }
-    UINT nfr = derframe - preframe + 1;
-    */
     UINT8* image = NULL;
     float ratio = (float)width_image / (float)image_sizeW; 
     
@@ -17541,18 +17400,6 @@ LRESULT CALLBACK BGProc(HWND hWin, UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message)
     {
-    /*case WM_COMMAND:
-    {
-        int wmId = LOWORD(wParam);
-        
-        switch (wmId)
-        {
-        default:
-            return DefWindowProc(hWin, message, wParam, lParam);
-        }
-        break;
-    }
-    */
     case WM_MOUSEWHEEL:
     {
         if (MycRom.name[0] == 0) return TRUE;
@@ -19446,7 +19293,7 @@ void mouse_move_callback(GLFWwindow* window, double xpos, double ypos)
         GetCursorPos(&tpt);
         int xspos, yspos;
         glfwGetWindowPos(glfwframe, &xspos, &yspos);
-        if (Zoom_Pushed && ((nEditExtraResolutionF && MycRom.fHeightX == 64) || (!nEditExtraResolutionF && MycRom.fHeight == 64)))
+        if (Edit_Mode == 1 && Zoom_Pushed && ((nEditExtraResolutionF && MycRom.fHeightX == 64) || (!nEditExtraResolutionF && MycRom.fHeight == 64)))
         {
             paste_offsetx = (int)((tpt.x - xspos) / (2 * frame_zoom) - Paste_Width / 2);
             paste_offsety = (int)((tpt.y - yspos) / (2 * frame_zoom) - Paste_Height / 2);
@@ -19459,7 +19306,7 @@ void mouse_move_callback(GLFWwindow* window, double xpos, double ypos)
     }
     else if ((window == glfwframe) && (Color_Pipette == 0))
     {
-        if (Zoom_Pushed && ((nEditExtraResolutionF && MycRom.fHeightX == 64) || (!nEditExtraResolutionF && MycRom.fHeight == 64)))
+        if (Edit_Mode == 1 && Zoom_Pushed && ((nEditExtraResolutionF && MycRom.fHeightX == 64) || (!nEditExtraResolutionF && MycRom.fHeight == 64)))
         {
             MouseFinPosx = (int)(xpos / (2 * frame_zoom) + offset_frame_x);
             MouseFinPosy = (int)(ypos / (2 * frame_zoom) + offset_frame_y);
@@ -19586,9 +19433,9 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
     int xipos = (int)xpos, yipos = (int)ypos;
     if (window == glfwframe) 
     {
-        if (ExtraResFClicked && MycRom.isExtraFrame[acFrame] == 0) return; 
+        if (Edit_Mode == 1 && ExtraResFClicked && MycRom.isExtraFrame[acFrame] == 0) return; 
         int xgrid, ygrid;
-        if (Zoom_Pushed && ((nEditExtraResolutionF && MycRom.fHeightX == 64) || (!nEditExtraResolutionF && MycRom.fHeight == 64)))
+        if (Edit_Mode == 1 && Zoom_Pushed && ((nEditExtraResolutionF && MycRom.fHeightX == 64) || (!nEditExtraResolutionF && MycRom.fHeight == 64)))
         {
             xgrid = (int)(xipos / (2 * frame_zoom) + offset_frame_x);
             ygrid = (int)(yipos / (2 * frame_zoom) + offset_frame_y);
@@ -19984,23 +19831,26 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                             for (UINT tj = 0; tj < nSelFrames; tj++)
                             {
                                 if (nEditExtraResolutionF && MycRom.isExtraFrame[SelFrames[tj]] == 0) continue;
-                                for (UINT ti = 0; ti < fw * fh; ti++)
+                                for (UINT ti = 0; ti < fh; ti++)
                                 {
-                                    if (pfr[SelFrames[tj] * fw * fh + ti] == col_to_find)
+                                    for (UINT tk = 0; tk < fw; tk++)
                                     {
-                                        if (MycRP.DrawColMode == 1)
+                                        if (pfr[SelFrames[tj] * fw * fh + ti*fw+tk] == col_to_find)
                                         {
-                                            if (!nEditExtraResolutionF)
-                                                pfr[SelFrames[tj] * fw * fh + ti] = MycRP.acEditColorsS[MycRP.oFrames[SelFrames[tj] * MycRom.fHeight * MycRom.fWidth + ti]];
-                                            else
+                                            if (MycRP.DrawColMode == 1)
                                             {
-                                                if (fh == 64)
-                                                    pfr[SelFrames[tj] * fw * fh + ti] = MycRP.acEditColorsS[MycRP.oFrames[SelFrames[tj] * MycRom.fHeight * MycRom.fWidth + ti / 2]];
+                                                if (!nEditExtraResolutionF)
+                                                    pfr[SelFrames[tj] * fw * fh + ti * fw + tk] = MycRP.acEditColorsS[MycRP.oFrames[SelFrames[tj] * MycRom.fHeight * MycRom.fWidth + ti * fw + tk]];
                                                 else
-                                                    pfr[SelFrames[tj] * fw * fh + ti] = MycRP.acEditColorsS[MycRP.oFrames[SelFrames[tj] * MycRom.fHeight * MycRom.fWidth + ti * 2]];
+                                                {
+                                                    if (fh == 64)
+                                                        pfr[SelFrames[tj] * fw * fh + ti * fw + tk] = MycRP.acEditColorsS[MycRP.oFrames[SelFrames[tj] * MycRom.fHeight * MycRom.fWidth + ti/2 * MycRom.fWidth + tk/2]];
+                                                    else
+                                                        pfr[SelFrames[tj] * fw * fh + ti * fw + tk] = MycRP.acEditColorsS[MycRP.oFrames[SelFrames[tj] * MycRom.fHeight * MycRom.fWidth + ti*2 * MycRom.fWidth + tk*2]];
+                                                }
                                             }
+                                            else pfr[SelFrames[tj] * fw * fh + ti * fw + tk] = MycRP.acEditColorsS[noColSel];
                                         }
-                                        else pfr[SelFrames[tj] * fw * fh + ti] = MycRP.acEditColorsS[noColSel];
                                     }
                                 }
                             }
@@ -20903,14 +20753,6 @@ bool CreateToolbar(void)
         }
         ComboBox_SetItemHeight(GetDlgItem(hwTB, IDC_MASKLIST), 0, 90);
         SetCommonButton(Common_Pushed);
-        /*oldMaskListFunc = (WNDPROC)GetWindowLongPtr(GetDlgItem(hwTB, IDC_MASKLIST), GWLP_WNDPROC);
-        SetWindowSubclass(GetDlgItem(hwTB, IDC_MASKLIST), (SUBCLASSPROC)SubclassMaskListProc, 0, 0);
-        oldSectionListoFunc = (WNDPROC)GetWindowLongPtr(GetDlgItem(hwTB, IDC_SECTIONLIST), GWLP_WNDPROC);
-        SetWindowSubclass(GetDlgItem(hwTB, IDC_SECTIONLIST), (SUBCLASSPROC)SubclassSecListoProc, 1, 0);
-        oldMask2ListFunc = (WNDPROC)GetWindowLongPtr(GetDlgItem(hwTB, IDC_MASKLIST2), GWLP_WNDPROC);
-        SetWindowSubclass(GetDlgItem(hwTB, IDC_MASKLIST2), (SUBCLASSPROC)SubclassMask2ListProc, 4, 0);
-        functoremove = 1;
-        */
     }
     else
     {
@@ -21010,12 +20852,6 @@ bool CreateToolbar(void)
         SendMessageA(GetDlgItem(hwTB, IDC_FILTERTYPE), CB_ADDSTRING, 0, (LPARAM)"Lanczos4");
         FrameResizeFilter = 0;
         SendMessageA(GetDlgItem(hwTB, IDC_FILTERTYPE), CB_SETCURSEL, 0, 0);
-        /*oldSectionListcFunc = (WNDPROC)GetWindowLongPtr(GetDlgItem(hwTB, IDC_SECTIONLIST), GWLP_WNDPROC);
-        SetWindowSubclass(GetDlgItem(hwTB, IDC_SECTIONLIST), (SUBCLASSPROC)SubclassSecListcProc, 2, 0);
-        oldSpriteList2Func = (WNDPROC)GetWindowLongPtr(GetDlgItem(hwTB, IDC_SPRITELIST2), GWLP_WNDPROC);
-        SetWindowSubclass(GetDlgItem(hwTB, IDC_SPRITELIST2), (SUBCLASSPROC)SubclassSpriteList2Proc, 3, 0);
-        functoremove = 2;
-        */
     }
     if (UndoAvailableN > 0) EnableWindow(GetDlgItem(hwTB, IDC_UNDO), TRUE); else EnableWindow(GetDlgItem(hwTB, IDC_UNDO), FALSE);
     if (RedoAvailableN > 0) EnableWindow(GetDlgItem(hwTB, IDC_REDO), TRUE); else EnableWindow(GetDlgItem(hwTB, IDC_REDO), FALSE);
@@ -21033,9 +20869,6 @@ bool CreateToolbar2(void)
 {
     if (hwTB2)
     {
-        /*RemoveWindowSubclass(hwTB2, (SUBCLASSPROC)SubclassSpriteListProc, 5);
-        RemoveWindowSubclass(hwTB2, (SUBCLASSPROC)SubclassSpriteDetListProc, 6);
-        */
         DestroyWindow(hwTB2);
     }
     hwTB2 = CreateDialog(hInst, MAKEINTRESOURCE(IDD_SPRDLG), hSprites, Toolbar_Proc2);
@@ -21081,11 +20914,6 @@ bool CreateToolbar2(void)
     SetWindowPos(GetDlgItem(hwTB2, IDC_STRY19), 0, 0, 0, 5, 100, SWP_NOMOVE | SWP_NOZORDER);
     if (UndoAvailableN > 0) EnableWindow(GetDlgItem(hwTB2, IDC_UNDO), TRUE); else EnableWindow(GetDlgItem(hwTB2, IDC_UNDO), FALSE);
     if (RedoAvailableN > 0) EnableWindow(GetDlgItem(hwTB2, IDC_REDO), TRUE); else EnableWindow(GetDlgItem(hwTB2, IDC_REDO), FALSE);
-    /*oldSpriteListFunc = (WNDPROC)GetWindowLongPtr(GetDlgItem(hwTB2, IDC_SPRITELIST), GWLP_WNDPROC);
-    SetWindowSubclass(GetDlgItem(hwTB2, IDC_SPRITELIST), (SUBCLASSPROC)SubclassSpriteListProc, 5, 0);
-    oldSpriteDetListFunc = (WNDPROC)GetWindowLongPtr(GetDlgItem(hwTB2, IDC_DETSPR), GWLP_WNDPROC);
-    SetWindowSubclass(GetDlgItem(hwTB2, IDC_DETSPR), (SUBCLASSPROC)SubclassSpriteDetListProc, 6, 0);
-    */
     SetZoomSpriteButton(Zoom_Pushed_Sprite);
     SetExtraResFBox();
     char tbuf[8];
@@ -21115,9 +20943,6 @@ bool CreateToolbar3(void)
 {
     if (hwTB3)
     {
-        /*RemoveWindowSubclass(hwTB2, (SUBCLASSPROC)SubclassSpriteListProc, 5);
-        RemoveWindowSubclass(hwTB2, (SUBCLASSPROC)SubclassSpriteDetListProc, 6);
-        */
         DestroyWindow(hwTB3);
     }
     hwTB3 = CreateDialog(hInst, MAKEINTRESOURCE(IDD_IMGDLG), hImages, Toolbar_Proc3);
@@ -21155,15 +20980,6 @@ bool CreateToolbar3(void)
     SendMessageA(GetDlgItem(hwTB3, IDC_FILTERTYPE), CB_SETCURSEL, 0, 0);
     
     
-    /*char tbuf[8];
-    SendMessage(GetDlgItem(hwTB2, IDC_DETSPR), CB_RESETCONTENT, 0, 0);
-    for (int ti = 0; ti < MAX_SPRITE_DETECT_AREAS; ti++)
-    {
-        _itoa_s(ti + 1, tbuf, 8, 10);
-        SendMessageA(GetDlgItem(hwTB2, IDC_DETSPR), CB_ADDSTRING, 0, (LPARAM)tbuf);
-    }
-    SendMessage(GetDlgItem(hwTB2, IDC_DETSPR), CB_SETCURSEL, 0, 1);
-    */
     
     
     

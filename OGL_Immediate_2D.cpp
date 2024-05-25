@@ -9,8 +9,7 @@ int text_CreateTextureCircle(GLFWwindow* glfww)
 {
 	glfwMakeContextCurrent(glfww);
 	
-	/* Generate texture 
-	*/
+	/* Generate texture */
 	GLuint texid;
 	UINT8 texel[64] = { 0,255,255,255,255,255,255,0,
 						255,255,255,255,255,255,255,255,
@@ -26,8 +25,7 @@ int text_CreateTextureCircle(GLFWwindow* glfww)
 	glGenTextures(1, &texid);
 	glBindTexture(GL_TEXTURE_2D, texid);
 
-	/* Setup texture filters 
-	*/
+	/* Setup texture filters */
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 

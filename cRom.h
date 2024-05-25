@@ -204,3 +204,12 @@ typedef struct {
 	UINT32 hashcode; 
 } sFrames;
 
+/*typedef struct {
+	DWORD lastTime[MAX_COLOR_ROTATION]; 
+	
+	UINT8 ncol[MAX_COLOR_ROTATION]; 
+	UINT16 colors[MAX_LENGTH_COLOR_ROTATION]; 
+	UINT8 acfirst[MAX_COLOR_ROTATION]; 
+	DWORD timespan[MAX_COLOR_ROTATION]; 
+} sColRot;*/
+

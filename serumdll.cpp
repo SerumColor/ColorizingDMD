@@ -78,6 +78,7 @@ void DownscaleRGB565Frame(UINT16* frame64, UINT16* frame32, UINT width64)
 bool ColorizeAFrame(UINT8* vpframe, UINT16** newframe32, UINT16** newframe64, UINT* frameID, bool* is32fr, bool* is64fr)
 {
         Serum_Colorize(vpframe);
+        *frameID = pSerum->frameID;
         *newframe32 = pSerum->frame32;
         *newframe64 = pSerum->frame64;
         if (pSerum->width32 > 0) *is32fr = true; else *is32fr = false;
@@ -92,13 +93,13 @@ bool ColorizeAFrame(UINT8* vpframe, UINT16** newframe32, UINT16** newframe64, UI
 
 bool ColorRotateAFrame(UINT16** newframe32, UINT8** modelt32, UINT16** newframe64, UINT8** modelt64)
 {
-    bool isrot;
-    isrot = Serum_Rotate(); 
+    UINT isrot = Serum_Rotate(); 
     *newframe32 = pSerum->frame32;
     *newframe64 = pSerum->frame64;
     if (modelt32) *modelt32 = ModifiedElements32;
     if (modelt64) *modelt64 = ModifiedElements64;
-    return isrot;
+    if (isrot > 0) return true;
+    return false;
 }
 
 void StopLibSerum(void)
