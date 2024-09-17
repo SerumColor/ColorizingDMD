@@ -8,7 +8,7 @@ Click on the "releases" link on the right hand side of this page. Or [Click Here
 
 # ColorizingDMD Serum Editor
 
-To install the editor, just download the zip from the "ColorizingDMD editor" directory and save it anywhere on your disk.
+To install the editor, just download the zip from the "ColorizingDMD editor" directory and save it anywhere on your disk (DO NOT unzip ColorizingDMD and SortingCDump in the same directory!).
 
 If you are using Windows 10 or more recent, right click on the file and choose "Properties". If in the Properties window, there is a box "Unblock" in the bottom right, check it and click "OK".
 Then uncompress the ZIP file.
