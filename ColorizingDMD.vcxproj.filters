@@ -57,6 +57,15 @@
     <ClInclude Include="serumwin.h">
       <Filter>Fichiers d%27en-tête</Filter>
     </ClInclude>
+    <ClInclude Include="cdecode.h">
+      <Filter>Fichiers d%27en-tête</Filter>
+    </ClInclude>
+    <ClInclude Include="ccommon.h">
+      <Filter>Fichiers d%27en-tête</Filter>
+    </ClInclude>
+    <ClInclude Include="ResizeFilters.h">
+      <Filter>Fichiers d%27en-tête</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ColorizingDMD.cpp">
@@ -75,6 +84,12 @@
       <Filter>Fichiers sources</Filter>
     </ClCompile>
     <ClCompile Include="serumwin.cpp">
+      <Filter>Fichiers sources</Filter>
+    </ClCompile>
+    <ClCompile Include="cdecode.cpp">
+      <Filter>Fichiers sources</Filter>
+    </ClCompile>
+    <ClCompile Include="ResizeFilters.cpp">
       <Filter>Fichiers sources</Filter>
     </ClCompile>
   </ItemGroup>

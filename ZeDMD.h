@@ -5,9 +5,9 @@
  */
 #pragma once
 
-#define ZEDMD_VERSION_MAJOR 0  
-#define ZEDMD_VERSION_MINOR 7  
-#define ZEDMD_VERSION_PATCH 2  
+#define ZEDMD_VERSION_MAJOR 0  // X Digits
+#define ZEDMD_VERSION_MINOR 7  // Max 2 Digits
+#define ZEDMD_VERSION_PATCH 2  // Max 2 Digits
 
 #define _ZEDMD_STR(x) #x
 #define ZEDMD_STR(x) _ZEDMD_STR(x)
@@ -222,7 +222,7 @@ class ZEDMDAPI ZeDMD
    *
    *  ZeDMD will display various debug information as overlay to
    *  the displayed frame.
-   *  @see https:
+   *  @see https://github.com/PPUC/ZeDMD
    */
   void EnableDebug();
 
@@ -236,7 +236,7 @@ class ZEDMDAPI ZeDMD
    *
    *  ZeDMD supports different LED panels.
    *  Depending on the panel, the RGB order needs to be adjusted.
-   *  @see https:
+   *  @see https://github.com/PPUC/ZeDMD
    *
    *  @param rgbOrder a value between 0 and 5
    */
@@ -245,7 +245,7 @@ class ZEDMDAPI ZeDMD
   /** @brief Set the brightness
    *
    *  Set the brightness of the LED panels.
-   *  @see https:
+   *  @see https://github.com/PPUC/ZeDMD
    *
    *  @param brightness a value between 0 and 15
    */
@@ -254,7 +254,7 @@ class ZEDMDAPI ZeDMD
   /** @brief Set the WiFi SSID
    *
    *  Set the WiFi SSID ZeDMD should connect with.
-   *  @see https:
+   *  @see https://github.com/PPUC/ZeDMD
    *
    *  @param brightness a value between 0 and 15
    */
@@ -263,7 +263,7 @@ class ZEDMDAPI ZeDMD
   /** @brief Set the WiFi Password
    *
    *  Set the WiFi Password ZeDMD should use to connect.
-   *  @see https:
+   *  @see https://github.com/PPUC/ZeDMD
    *
    *  @param password the password
    */
@@ -272,7 +272,7 @@ class ZEDMDAPI ZeDMD
   /** @brief Set the WiFi Port
    *
    *  Set the Port ZeDMD should listen at over WiFi.
-   *  @see https:
+   *  @see https://github.com/PPUC/ZeDMD
    *
    *  @param port the port
    */
@@ -282,7 +282,7 @@ class ZEDMDAPI ZeDMD
    *
    *  Saves all current setting within ZeDMD's EEPROM to be used
    *  as defualt at its next start.
-   *  @see https:
+   *  @see https://github.com/PPUC/ZeDMD
    *  @see SetRGBOrder()
    *  @see SetBrightness()
    *  @see SetWiFiSSID()

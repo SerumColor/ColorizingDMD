@@ -1,20 +1,20 @@
 #include "serumdll.h"
 
-
-UINT8* ModifiedElements32 = NULL; 
-UINT8* ModifiedElements64 = NULL; 
-
-
-
-UINT32 fWidth, fHeight; 
-
-
+//UINT8 isNewFormat = 0; // is the file a new Serum 2+ version (1) or a former version one (0)?
+UINT8* ModifiedElements32 = NULL; // for the new color rotations in 32P, optional
+UINT8* ModifiedElements64 = NULL; // for the new color rotations in 64P, optional
+//UINT triggerID; // return PuP pack trigger ID (0xffff if no trigger)
+//UINT8 returnflag; // what frame resolutions are returned with new format colorization
+//UINT32 noColors; // number of colors of the original ROM (4 or 16)
+UINT32 fWidth, fHeight; // dimensions of the original ROM (MUST BE KNOWN BEFORE calling Serum functions)
+//UINT width32 = 0, width64 = 0; // widths of the colorized frames returned respectively for the height=32 and height=64 frames
+//UINT ntriggers = 0; // number of PuP triggers found in the file
 Serum_Frame_Struc* pSerum;
 
 bool Allocate_Serum(void)
 {
-    
-    
+    // ---------- Both ModifiedElementsXX are optional so this code may be skipped ----------
+    // They are only needed if you only want to change the modified pixels of a frame after a color rotation
     ModifiedElements32 = (UINT8*)malloc(pSerum->width32 * 32);
     ModifiedElements64 = (UINT8*)malloc(pSerum->width64 * 64);
     if (!ModifiedElements32 || !ModifiedElements64)
@@ -67,14 +67,14 @@ void DownscaleRGB565Frame(UINT16* frame64, UINT16* frame32, UINT width64)
     }
 }
 
-
-
-
-
-
-
-
-
+/// <summary>
+/// colorize a frame (in return, buffers are available if non NULL)
+/// </summary>
+/// <param name="vpframe">inbound frame</param>
+/// <param name="oldframe">colorized frame if old format</param>
+/// <param name="newframe32">colorized frame in 32P if new format</param>
+/// <param name="newframe64">colorized frame in 32P if new format</param>
+/// <returns>return true if there is an active color rotation, false if not</returns>
 bool ColorizeAFrame(UINT8* vpframe, UINT16** newframe32, UINT16** newframe64, UINT* frameID, bool* is32fr, bool* is64fr)
 {
         Serum_Colorize(vpframe);
@@ -93,7 +93,7 @@ bool ColorizeAFrame(UINT8* vpframe, UINT16** newframe32, UINT16** newframe64, UI
 
 bool ColorRotateAFrame(UINT16** newframe32, UINT8** modelt32, UINT16** newframe64, UINT8** modelt64)
 {
-    UINT isrot = Serum_Rotate(); 
+    UINT isrot = Serum_Rotate(); // if you don't need them replace ModifiedElementsXX by NULL
     *newframe32 = pSerum->frame32;
     *newframe64 = pSerum->frame64;
     if (modelt32) *modelt32 = ModifiedElements32;
