@@ -1,11 +1,15 @@
 #pragma once
 #include "resource.h"
 #include "OGL_Immediate_2D.h"
+#include <string>
+#include "ResizeFilters.h"
+#include <opencv2/opencv.hpp>
+using namespace cv;
 
 #define FRAME_STRIP_W_MARGIN 15
 #define FRAME_STRIP_H_MARGIN 20
-#define FRAME_STRIP_HEIGHT (64 + 2 * FRAME_STRIP_H_MARGIN) 
-#define FRAME_STRIP_HEIGHT2 (64 + 2 * FRAME_STRIP_H_MARGIN) 
+#define FRAME_STRIP_HEIGHT (64 + 2 * FRAME_STRIP_H_MARGIN) // height of the frame strip + 2 margins
+#define FRAME_STRIP_HEIGHT2 (64 + 2 * FRAME_STRIP_H_MARGIN) // height of the sprite strip + 2 margins
 #define FRAME_STRIP_SLIDER_MARGIN 10
 #define SPRITE_INTERVAL 10
 #define DIGIT_TEXTURE_W 20
@@ -16,7 +20,7 @@
 #define NEXT_KEY_TIMER_INT 50
 #define MARGIN_PALETTE_X 20
 #define MARGIN_PALETTE_Y 100
-#define AUTOSAVE_TICKS 600000 
+#define AUTOSAVE_TICKS 600000 // 10*60*1000 autosave every 10 minutes
 
 void Frame_Strip_Update(void);
 LRESULT CALLBACK Wait_Proc(HWND hWndDlg, UINT Msg, WPARAM wParam, LPARAM lParam);
@@ -58,7 +62,7 @@ bool SetIcon(HWND ButHWND, UINT ButIco);
 void UpdateFrameBG(void);
 void AddBackground(void);
 void DeleteBackground(void);
-void cprintf(bool isFlash, const char* format, ...); 
+void cprintf(bool isFlash, const char* format, ...); // write to the console
 void SetCommonButton(bool ison);
 void SetZoomButton(bool ison);
 void SetZoomSpriteButton(bool ison);
@@ -78,3 +82,25 @@ void SetBackground(void);
 void BubbleSort(UINT* arr, UINT n);
 UINT8 ValuePlus2x2(UINT8* pbuf, UINT lineW);
 void InitCropZoneList(void);
+void ModBackgroundMask(bool AddMask);
+void generateAIImage(const std::string& prompt, const std::string api_key, HWND hDlg);
+void variationAIImage(const std::string api_key, HWND hDlg);
+void DrawImagePix(UINT8* pimage, UINT16* protation, UINT pixnb, UINT width, UINT16 pcol, UINT sizepix, UINT16 colrot, UINT16 nocolrot);
+
+//void (*resizefilterFunc)(UINT16*, UINT16*);
+enum
+{
+	RF_NEAREST,
+	RF_BILINEAR,
+	RF_BICUBIC,
+	RF_LANCZOS4,
+	RF_SCALE2X,
+	//RF_HQ2X,
+	NUMBER_OF_RESIZE_FILTERS
+}resize_filters_list;
+const char resize_filters_name[NUMBER_OF_RESIZE_FILTERS][16] = { "Nearest", "Bilinear", "Bicubic", "Lanczos4", "Scale2x" };// , "HQ2x" };
+const int resize_filters_isCV[NUMBER_OF_RESIZE_FILTERS] = { cv::INTER_NEAREST,cv::INTER_LINEAR,cv::INTER_CUBIC,cv::INTER_LANCZOS4,-1 };// , -1};
+//const void* resize_filters_proc[NUMBER_OF_RESIZE_FILTERS] = { NULL,NULL,NULL,NULL,Filter_Scale2X,Filter_HQ2X};
+void (*resize_filters_proc[NUMBER_OF_RESIZE_FILTERS])(UINT16*, UINT16*, UINT, UINT) = { NULL,NULL,NULL,NULL,Filter_Scale2X };// , Filter_HQ2X };
+void (*resize_filters_mask_proc[NUMBER_OF_RESIZE_FILTERS])(UINT16*, UINT16*, UINT8*, UINT8*, UINT, UINT) = { NULL,NULL,NULL,NULL,Filter_Scale2Xmask };// , Filter_HQ2Xmask };
+const UINT8 resize_filters_upordown[NUMBER_OF_RESIZE_FILTERS] = { 3,3,3,3,1 };// , 1 }; // 1: filter to upscale, 2: filter to downscale, 3: filter for doing both
