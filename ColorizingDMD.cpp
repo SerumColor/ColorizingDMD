@@ -45,8 +45,8 @@ using namespace Gdiplus;
 #pragma region Global_Variables
 
 #define MAJOR_VERSION 3
-#define MINOR_VERSION 6
-#define PATCH_VERSION 1
+#define MINOR_VERSION 7
+#define PATCH_VERSION 0
 
 static TCHAR szWindowClass[] = _T("ColorizingDMD");
 static TCHAR szWindowClass2[] = _T("ChildWin");
@@ -10975,10 +10975,11 @@ unsigned int Count_TXT_Frames(char* TXTF_buffer,size_t TXTF_buffer_len)
     return nF;
 }
 
-bool Get_Frames_Ptr_Size_And_Number_Of_Colors(sFrames** ppFrames,UINT nFrames,char* TXTF_buffer,size_t TXTF_buffer_len)
+bool Get_Frames_Ptr_Size_And_Number_Of_Colors(sFrames** ppFrames,UINT nFrames,char* TXTF_buffer,size_t TXTF_buffer_len, bool* mustpad128x16)
 {
     // we get the pointers to the data of each frame inside the txt file
     MycRom.noColors = 4;
+    *mustpad128x16 = false;
     sFrames* pFrames = (sFrames*)malloc(sizeof(sFrames) * nFrames);
     *ppFrames = pFrames;
     //char tbuf[16];
@@ -11017,15 +11018,28 @@ bool Get_Frames_Ptr_Size_And_Number_Of_Colors(sFrames** ppFrames,UINT nFrames,ch
                     while (TXTF_buffer[finPos] != '\n') finPos++;
                     MycRom.fHeight++;
                 }
-                if (MycRom.fHeight == 64)
+                if (MycRom.fWidth == 192 && MycRom.fHeight == 64)
                 {
-                    MycRom.fHeightX = MycRom.fHeight/2;
+                    MycRom.fHeightX = MycRom.fHeight / 2;
                     MycRom.fWidthX = MycRom.fWidth / 2;
                 }
-                else
+                else if (MycRom.fWidth == 128 && MycRom.fHeight == 32)
                 {
                     MycRom.fHeightX = MycRom.fHeight * 2;
                     MycRom.fWidthX = MycRom.fWidth * 2;
+                }
+                else if (MycRom.fWidth == 128 && MycRom.fHeight == 16)
+                {
+                    *mustpad128x16 = true;
+                    // MyCrom.fHeight is kept as 16 and set to 32 at the end of this function
+                    MycRom.fHeightX = 64;
+                    MycRom.fWidthX = MycRom.fWidth * 2;
+                }
+                else
+                {
+                    cprintf(true, "Unable to import dump from that TXT file");
+                    free(pFrames);
+                    return false;
                 }
             }
             // then we translate the frame '0'-'9' -> 0-9, 'a'-'f' -> 10-15, 'A'-'F' -> 10-15 and removing the '\r' and '\n' and check for the number of colors
@@ -11048,29 +11062,31 @@ bool Get_Frames_Ptr_Size_And_Number_Of_Colors(sFrames** ppFrames,UINT nFrames,ch
             acFr++;
         }
     }
+    if (*mustpad128x16) MycRom.fHeight = 32;
     //if (MycRom.fHeight == 64) acZoom = basezoom; else acZoom = 2 * basezoom;
     return true;
 }
 
-bool Parse_TXT(char* TXTF_name, char* TXTF_buffer, size_t TXTF_buffer_len, sFrames** ppFrames, UINT* pnFrames)
+bool Parse_TXT(char* TXTF_name, char* TXTF_buffer, size_t TXTF_buffer_len, sFrames** ppFrames, UINT* pnFrames, bool* mustpad128x16)
 {
     // Initial TXT file parsing: count the frames in the file then get pointers to the frames in the file buffer + determine nb of colors and frame size
     if (!TXTF_buffer) return false;
     *pnFrames = Count_TXT_Frames(TXTF_buffer, TXTF_buffer_len);
-    if (!Get_Frames_Ptr_Size_And_Number_Of_Colors(ppFrames, *pnFrames, TXTF_buffer, TXTF_buffer_len))
+    if (!Get_Frames_Ptr_Size_And_Number_Of_Colors(ppFrames, *pnFrames, TXTF_buffer, TXTF_buffer_len, mustpad128x16))
     {
         Free_Project();
         return false;
     }
-    cprintf(false, "Opened txt file %s with %i frames: resolution %ix%i, %i colors", TXTF_name, *pnFrames,MycRom.fWidth,MycRom.fHeight,MycRom.noColors);
+    if (*mustpad128x16) cprintf(false, "Opened txt file %s with %i frames: resolution %ix16 (converted to %ix32), %i colors", TXTF_name, *pnFrames, MycRom.fWidth, MycRom.fWidth, MycRom.noColors);
+    else cprintf(false, "Opened txt file %s with %i frames: resolution %ix%i, %i colors", TXTF_name, *pnFrames,MycRom.fWidth,MycRom.fHeight,MycRom.noColors);
     return true;
 }
 
-void CompareFrames(UINT nFrames, sFrames* pFrames)
+void CompareFrames(UINT nFrames, sFrames* pFrames, bool mustpad128x16)
 {
     // We have a block of sFrames with pointers to frames decoded ('a'->10, '1'->1, etc..., and with no CR and LF), active is set to TRUE and
     // the timecode is the value from the TXT file
-    // we need to filter the frames according what has been checked in the IID_FILTERS dialog and to change the value of timecode so that this is the
+    // we need to filter the frames according to what has been checked in the IID_FILTERS dialog and to change the value of timecode so that this is the
     // time span the frame has been displayed
 
     UINT nfremoved = 0;
@@ -11099,7 +11115,15 @@ void CompareFrames(UINT nFrames, sFrames* pFrames)
         else pFrames[ti].timecode = DEFAULT_FRAME_DURATION;
         // we check the number of colors in each frame if needed and do the no-mask-hash calculations at the same time
         UINT8 ncols;
-        pFrames[ti].hashcode = crc32_fast_count((UINT8*)pFrames[ti].ptr, MycRom.fWidth * MycRom.fHeight, FALSE, &ncols);
+        UINT8* pfr = (UINT8*)pFrames[ti].ptr;
+        if (mustpad128x16)
+        {
+            pfr = new UINT8[128 * 32];
+            memset(pfr, 0, 128 * 32);
+            memcpy(&pfr[8 * 128], pFrames[ti].ptr, 16 * 128);
+        }
+        pFrames[ti].hashcode = crc32_fast_count(pfr, MycRom.fWidth * MycRom.fHeight, FALSE, &ncols);
+        if (mustpad128x16) delete[] pfr;
         if (filter_color && (filter_ncolor < ncols) && pFrames[ti].active)
         {
             nfrremcol++;
@@ -11127,7 +11151,7 @@ void CompareFrames(UINT nFrames, sFrames* pFrames)
     cprintf(false, "%i frames removed (%i for short duration, %i for too many colors, %i identical), %i added", nfremoved, nfrremtime, nfrremcol, nfrremsame, nFrames - nfremoved);
 }
 
-void CompareAdditionalFrames(UINT nFrames, sFrames* pFrames)
+void CompareAdditionalFrames(UINT nFrames, sFrames* pFrames, bool mustpad128x16)
 {
     //HWND hDlg = Display_Wait("Please wait...");
     // Compare the new frames of a txt file to the previous and new ones to remove copy frames
@@ -11159,7 +11183,15 @@ void CompareAdditionalFrames(UINT nFrames, sFrames* pFrames)
         else pFrames[ti].timecode = DEFAULT_FRAME_DURATION;
         // we check the number of colors in each frame if needed and do the no-mask-hash calculations at the same time
         UINT8 ncols;
-        pFrames[ti].hashcode = crc32_fast_count((UINT8*)pFrames[ti].ptr, MycRom.fWidth * MycRom.fHeight, FALSE, &ncols);
+        UINT8* pfr = (UINT8*)pFrames[ti].ptr;
+        if (mustpad128x16)
+        {
+            pfr = new UINT8[128 * 32];
+            memset(pfr, 0, 128 * 32);
+            memcpy(&pfr[8 * 128], pFrames[ti].ptr, 16 * 128);
+        }
+        pFrames[ti].hashcode = crc32_fast_count(pfr, MycRom.fWidth * MycRom.fHeight, FALSE, &ncols);
+        if (mustpad128x16) delete[] pfr;
         if (filter_color && (filter_ncolor < ncols) && pFrames[ti].active)
         {
             nfrremcol++;
@@ -11220,7 +11252,15 @@ void CompareAdditionalFrames(UINT nFrames, sFrames* pFrames)
             {
                 if ((premask != MycRom.CompMaskID[tj]) || (isshapemode != (BOOL)MycRom.ShapeCompMode[tj]))
                 {
-                    achash = crc32_fast_mask_shape((UINT8*)pFrames[ti].ptr, &MycRom.CompMasks[MycRom.CompMaskID[tj] * MycRom.fWidth * MycRom.fHeight], MycRom.fWidth * MycRom.fHeight, (BOOL)MycRom.ShapeCompMode[tj]);
+                    UINT8* pfr = (UINT8*)pFrames[ti].ptr;
+                    if (mustpad128x16)
+                    {
+                        pfr = new UINT8[128 * 32];
+                        memset(pfr, 0, 128 * 32);
+                        memcpy(&pfr[8 * 128], pFrames[ti].ptr, 16 * 128);
+                    }
+                    achash = crc32_fast_mask_shape(pfr, &MycRom.CompMasks[MycRom.CompMaskID[tj] * MycRom.fWidth * MycRom.fHeight], MycRom.fWidth * MycRom.fHeight, (BOOL)MycRom.ShapeCompMode[tj]);
+                    if (mustpad128x16) delete[] pfr;
                     premask = MycRom.CompMaskID[tj];
                     isshapemode = (BOOL)MycRom.ShapeCompMode[tj];
                 }
@@ -11264,7 +11304,7 @@ void CompareAdditionalFrames(UINT nFrames, sFrames* pFrames)
     cprintf(false, "%i frames removed (%i for short duration, %i for too many colors, %i identical with mask and/or shapemode, %i identical) %i added", nfremoved, nfrremtime, nfrremcol, nfrremmask, nfrremsame, nFrames - nfremoved);
 }
 
-bool CopyTXTFrames2Frame(UINT nFrames, sFrames* pFrames)
+bool CopyTXTFrames2Frame(UINT nFrames, sFrames* pFrames, bool mustpad128x16)
 {
     // Convert a txt frame to oFrame
     // count remaining original frames
@@ -11524,11 +11564,19 @@ bool CopyTXTFrames2Frame(UINT nFrames, sFrames* pFrames)
             Init_cFrame_Palette2();
             for (unsigned int tj = 0; tj < MycRom.fHeight* MycRom.fWidth; tj++)
             {
-                *pdoFr = (UINT8)(*psFr);
-                *pdcFr = originalcolors[*pdoFr];
+                if (mustpad128x16 && (tj / 128 < 8 || tj / 128 >= 24))
+                {
+                    *pdoFr = 0;
+                    *pdcFr = 0;
+                }
+                else
+                {
+                    *pdoFr = (UINT8)(*psFr);
+                    *pdcFr = originalcolors[*pdoFr];
+                    psFr++;
+                }
                 pdoFr++;
                 pdcFr++;
-                psFr++;
             }
             MycRom.nFrames++;
         }
@@ -11536,7 +11584,7 @@ bool CopyTXTFrames2Frame(UINT nFrames, sFrames* pFrames)
     return true;
 }
 
-bool AddTXTFrames2Frame(UINT nFrames, sFrames* pFrames)
+bool AddTXTFrames2Frame(UINT nFrames, sFrames* pFrames, bool mustpad128x16)
 {
     // Add frames from a new txt file to the already 
     // count remaining original frames
@@ -11772,11 +11820,19 @@ bool AddTXTFrames2Frame(UINT nFrames, sFrames* pFrames)
             Init_cFrame_Palette2();
             for (unsigned int tj = 0; tj < MycRom.fHeight * MycRom.fWidth; tj++)
             {
-                *pdoFr = (UINT8)(*psFr);
-                *pdcFr = originalcolors[*pdoFr];
+                if (mustpad128x16 && (tj / 128 < 8 || tj / 128 >= 24))
+                {
+                    *pdoFr = 0;
+                    *pdcFr = 0;
+                }
+                else
+                {
+                    *pdoFr = (UINT8)(*psFr);
+                    *pdcFr = originalcolors[*pdoFr];
+                    psFr++;
+                }
                 pdoFr++;
                 pdcFr++;
-                psFr++;
             }
             MycRom.nFrames++;
         }
@@ -11859,7 +11915,8 @@ void Load_TXT_File(void)
         size_t nread = fread_s(TXTF_buffer, TXTF_buffer_len + 1, 1, TXTF_buffer_len, pfile);
         TXTF_buffer[TXTF_buffer_len] = 0;
         fclose(pfile);
-        if (!Parse_TXT(ofn.lpstrFile,TXTF_buffer, TXTF_buffer_len, &pFrames, &nFrames))
+        bool mustpad128x16;
+        if (!Parse_TXT(ofn.lpstrFile,TXTF_buffer, TXTF_buffer_len, &pFrames, &nFrames,&mustpad128x16))
         {
             free(TXTF_buffer);
             SetCurrentDirectoryA(acDir);
@@ -11882,8 +11939,8 @@ void Load_TXT_File(void)
         }
         MycRom.name[ti] = 0;
         strcpy_s(MycRP.name, 64, MycRom.name);
-        CompareFrames(nFrames, pFrames);
-        CopyTXTFrames2Frame(nFrames, pFrames);
+        CompareFrames(nFrames, pFrames, mustpad128x16);
+        CopyTXTFrames2Frame(nFrames, pFrames, mustpad128x16);
         free(TXTF_buffer);
         free(pFrames);
         image_zoom_srce = false;
@@ -12088,14 +12145,15 @@ void Add_TXT_File(void)
         size_t nread = fread_s(TXTF_buffer, TXTF_buffer_len + 1, 1, TXTF_buffer_len, pfile);
         TXTF_buffer[TXTF_buffer_len] = 0;
         fclose(pfile);
-        if (!Parse_TXT(ofn.lpstrFile,TXTF_buffer, TXTF_buffer_len, &pFrames, &nFrames))
+        bool mustpad128x16;
+        if (!Parse_TXT(ofn.lpstrFile,TXTF_buffer, TXTF_buffer_len, &pFrames, &nFrames, &mustpad128x16))
         {
             free(TXTF_buffer);
             SetCurrentDirectoryA(acDir);
             return;
         }
-        CompareAdditionalFrames(nFrames, pFrames);
-        AddTXTFrames2Frame(nFrames, pFrames);
+        CompareAdditionalFrames(nFrames, pFrames, mustpad128x16);
+        AddTXTFrames2Frame(nFrames, pFrames, mustpad128x16);
         free(TXTF_buffer);
         free(pFrames);
     }
@@ -14152,7 +14210,7 @@ void ConvertCFrameToNewOFrame(void)
     tsFrame.active = true;
     tsFrame.timecode = 100;
     tsFrame.hashcode = 0; // the hashcode is not used in our case
-    AddTXTFrames2Frame(1, &tsFrame);
+    AddTXTFrames2Frame(1, &tsFrame, false);
     free(tsFrame.ptr);
     UpdateFSneeded = true;
 }
