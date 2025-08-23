@@ -49,7 +49,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 void UpdateFrameSpriteList(void);
 void UpdateTriggerID(void);
 void UpdatePuPList(void);
-bool MaskUsed(UINT32 nomask);
+int MaskUsed(UINT32 nomask);
 LRESULT CALLBACK Filter_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam);
 void UpdateSpriteList2(void);
 void UpdateSpriteList3(void);

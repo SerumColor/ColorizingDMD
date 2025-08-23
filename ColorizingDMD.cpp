@@ -49,8 +49,8 @@ using namespace Gdiplus;
 #pragma region Global_Variables
 
 #define MAJOR_VERSION 3
-#define MINOR_VERSION 14
-#define PATCH_VERSION 1
+#define MINOR_VERSION 15
+#define PATCH_VERSION 2
 
 static TCHAR szWindowClass[] = _T("ColorizingDMD");
 static TCHAR szWindowClass2[] = _T("ChildWin");
@@ -93,6 +93,7 @@ bool Night_Mode = false;
 bool NewProj;
 char Dir_Dumps[MAX_PATH], Dir_Images[MAX_PATH], Dir_Serum[MAX_PATH], Dir_GIFs[MAX_PATH], Dir_VP[MAX_PATH], Dir_AIImg[MAX_PATH];
 DWORD SavetickCount;
+bool alreadyAskDirectory = false;
 
 cRom_struct MycRom = { "",0,0,0,0,0,NULL,NULL,NULL,NULL,NULL,NULL,NULL };
 cRP_struct MycRP = { "",{FALSE},{0},0,0,{0},FALSE,0,FALSE };
@@ -1969,6 +1970,11 @@ void SaveFrames(bool isUndo)
     WriteSaveFile(hSave, MycRP.Sprite_Col_From_Frame, 255 * sizeof(UINT));
     WriteSaveFile(hSave, MycRP.FrameDuration, sizeof(UINT) * MycRom.nFrames);
     WriteSaveFile(hSave, &acFrame, sizeof(UINT));
+
+    // for delete frames, we also save the se ctions
+    WriteSaveFile(hSave, &MycRP.nSections, sizeof(UINT32));
+    WriteSaveFile(hSave, MycRP.Section_Firsts, MAX_SECTIONS * sizeof(UINT32));
+    WriteSaveFile(hSave, MycRP.Section_Names, MAX_SECTIONS * SIZE_SECTION_NAMES);
     CloseSaveFile(hSave, isUndo, noSave, SA_FRAMES);
 }
 
@@ -2019,7 +2025,7 @@ void RecoverFrames(bool isUndo)
     ReadSaveFile(hSave, MycRom.Dyna4Cols, sizeof(UINT16) * MycRom.nFrames * MAX_DYNA_SETS_PER_FRAMEN * MycRom.noColors);
     ReadSaveFile(hSave, MycRom.Dyna4ColsX, sizeof(UINT16) * MycRom.nFrames * MAX_DYNA_SETS_PER_FRAMEN * MycRom.noColors);
     ReadSaveFile(hSave, MycRom.FrameSprites, MycRom.nFrames * MAX_SPRITES_PER_FRAME);
-    ReadSaveFile(hSave, MycRom.FrameSpriteBB, 4 * 2 * MycRom.nFrames * MAX_SPRITES_PER_FRAME);
+    ReadSaveFile(hSave, MycRom.FrameSpriteBB, 4 * sizeof(UINT16) * MycRom.nFrames * MAX_SPRITES_PER_FRAME);
     ReadSaveFile(hSave, MycRom.ColorRotations, sizeof(UINT16) * MycRom.nFrames * MAX_COLOR_ROTATIONN * MAX_LENGTH_COLOR_ROTATION);
     ReadSaveFile(hSave, MycRom.ColorRotationsX, sizeof(UINT16) * MycRom.nFrames * MAX_COLOR_ROTATIONN * MAX_LENGTH_COLOR_ROTATION);
     ReadSaveFile(hSave, MycRom.TriggerID, MycRom.nFrames * sizeof(UINT));
@@ -2035,6 +2041,11 @@ void RecoverFrames(bool isUndo)
     ReadSaveFile(hSave, MycRP.Sprite_Col_From_Frame, 255 * sizeof(UINT));
     ReadSaveFile(hSave, MycRP.FrameDuration, sizeof(UINT) * MycRom.nFrames);
     ReadSaveFile(hSave, &acFrame, sizeof(UINT));
+
+    // for delete frames, we also save the sections
+    ReadSaveFile(hSave, &MycRP.nSections, sizeof(UINT32));
+    ReadSaveFile(hSave, MycRP.Section_Firsts, MAX_SECTIONS * sizeof(UINT32));
+    ReadSaveFile(hSave, MycRP.Section_Names, MAX_SECTIONS * SIZE_SECTION_NAMES);
     CloseHandle(hSave);
     RecoverAdjustAction(isUndo);
 }
@@ -4296,7 +4307,7 @@ void Check_SameFrames_Masks_All(void)
 
 void Check_Commons()
 {
-    memset(Common_Mask, 1, 256 * 64);
+    memset(Common_Mask, 0, 256 * 64);
     if (nSelFrames <= 1) return;
     for (UINT tj = 0; tj < MycRom.fHeight; tj++)
     {
@@ -4306,7 +4317,7 @@ void Check_Commons()
             {
                 if (MycRP.oFrames[SelFrames[0] * MycRom.fWidth * MycRom.fHeight + tj * MycRom.fWidth + ti] != MycRP.oFrames[SelFrames[tk] * MycRom.fWidth * MycRom.fHeight + tj * MycRom.fWidth + ti])
                 {
-                    Common_Mask[tj * MycRom.fWidth + ti] = 0;
+                    Common_Mask[tj * MycRom.fWidth + ti] = 1;
                     break;
                 }
             }
@@ -9393,12 +9404,14 @@ void AutoCopy(void)
     ConvertMaskToSourceReso(Copy_Mask_ORG, Copy_Mask);
     for (UINT ti = 0; ti < MycRom.nFrames; ti++)
         pselcrc32[ti] = crc32_fast_mask(&MycRP.oFrames[ti * MycRom.fWidth * MycRom.fHeight], Copy_Mask_ORG, MycRom.fWidth * MycRom.fHeight);
+    int tj = 0; // number of copies done
     for (UINT ti = 0; ti < MycRom.nFrames; ti++)
     {
         if (ti == acFrame) continue;
         // if the CRC32 is the same as the displayed one, we perform the copy
         if (pselcrc32[acFrame] == pselcrc32[ti])
         {
+			tj++;
             // found a frame with the part selected identical, we copy the colorization
             // we must adapt to the extra colorization or not
             if (!nEditExtraResolutionF)
@@ -9427,7 +9440,9 @@ void AutoCopy(void)
         }
     }
     free(pselcrc32);
-    MessageBoxA(hWnd, "Auto Copy completed", "Info", MB_OK);
+	char tbuf[256];
+	sprintf_s(tbuf, 256, "Auto Copy completed: %i frames updated", tj);
+    MessageBoxA(hWnd, tbuf, "Info", MB_OK);
 }
 
 /// <summary>
@@ -10759,33 +10774,37 @@ bool Save_cRom(bool autosave, bool fastsave, char* forcepath)
     }
     else if ((!fastsave && !autosave) || NewProj)
     {
-        LPITEMIDLIST pidlStart;
-        pidlStart = ILCreateFromPathA(Dir_Serum);
-        char szDir[MAX_PATH];
-        BROWSEINFOA bInfo;
-        bInfo.hwndOwner = hWnd;
-        bInfo.pidlRoot = NULL;
-        bInfo.pszDisplayName = szDir; // Address of a buffer to receive the display name of the folder selected by the user
-        bInfo.lpszTitle = "Please, select the Serum directory"; // Title of the dialog
-        bInfo.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
-        bInfo.lpfn = BrowseCallbackProc;
-        bInfo.lParam = (LPARAM)pidlStart;
-        bInfo.iImage = -1;
-        LPITEMIDLIST lpItem = SHBrowseForFolderA(&bInfo);
-        CoTaskMemFree(pidlStart);
-        if (lpItem != NULL)
+        if (!alreadyAskDirectory)
         {
-            SHGetPathFromIDListA(lpItem, Dir_Serum);
-            if ((Dir_Serum[strlen(Dir_Serum) - 1] != '/') && (Dir_Serum[strlen(Dir_Serum) - 1] != '\\')) strcat_s(Dir_Serum, MAX_PATH, "\\");
-            SavePaths();
-            if (!autosave) sprintf_s(tbuf, MAX_PATH, "%s%s.cROM", Dir_Serum, MycRom.name);
-            else  sprintf_s(tbuf, MAX_PATH, "%s%s(auto).cROM", Dir_Serum, MycRom.name);
-            CoTaskMemFree(lpItem);
-        }
-        else
-        {
-            cprintf(true, "The Serum file was not saved");
-            return false;
+            LPITEMIDLIST pidlStart;
+            pidlStart = ILCreateFromPathA(Dir_Serum);
+            char szDir[MAX_PATH];
+            BROWSEINFOA bInfo;
+            bInfo.hwndOwner = hWnd;
+            bInfo.pidlRoot = NULL;
+            bInfo.pszDisplayName = szDir; // Address of a buffer to receive the display name of the folder selected by the user
+            bInfo.lpszTitle = "Please, select the Serum directory"; // Title of the dialog
+            bInfo.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
+            bInfo.lpfn = BrowseCallbackProc;
+            bInfo.lParam = (LPARAM)pidlStart;
+            bInfo.iImage = -1;
+            LPITEMIDLIST lpItem = SHBrowseForFolderA(&bInfo);
+            CoTaskMemFree(pidlStart);
+            if (lpItem != NULL)
+            {
+                SHGetPathFromIDListA(lpItem, Dir_Serum);
+                if ((Dir_Serum[strlen(Dir_Serum) - 1] != '/') && (Dir_Serum[strlen(Dir_Serum) - 1] != '\\')) strcat_s(Dir_Serum, MAX_PATH, "\\");
+                SavePaths();
+                if (!autosave) sprintf_s(tbuf, MAX_PATH, "%s%s.cROM", Dir_Serum, MycRom.name);
+                else  sprintf_s(tbuf, MAX_PATH, "%s%s(auto).cROM", Dir_Serum, MycRom.name);
+                CoTaskMemFree(lpItem);
+                alreadyAskDirectory = true;
+            }
+            else
+            {
+                cprintf(true, "The Serum file was not saved");
+                return false;
+            }
         }
     }
     else
@@ -14186,7 +14205,7 @@ LRESULT CALLBACK ColSet_Proc(HWND hwDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
             GetWindowRect(hwDlg, &rcColSet);
             GetCursorPos(&mp);
             if ((mp.x > rcColSet.left) && (mp.x < rcColSet.right) && (mp.y > rcColSet.top) && (mp.y < rcColSet.bottom)) break; // we are on a child control of the dialog, but the cursor didn't leave the dialog
-            SaveColSetNames(hwDlg);
+            if (ColSetMode == 0) SaveColSetNames(hwDlg);
             DestroyWindow(hwDlg);
             hColSet = NULL;
             return TRUE;
@@ -14582,9 +14601,9 @@ const char* ButtonDescription(HWND hOver)
         if (hOver == GetDlgItem(hwTB, IDC_AUTOSEL)) return (const char*)"Number of column/rows of auto selection";
         if (hOver == GetDlgItem(hwTB, IDC_AUTONOSEL)) return (const char*)"Number of column/rows with no auto selection";
         if (hOver == GetDlgItem(hwTB, IDC_LUMPCT)) return (const char*)"Set the percentage of brightness modification.";
-        if (hOver == GetDlgItem(hwTB, IDC_LUMPCT)) return (const char*)"Set the percentage of brightness modification.";
         if (hOver == GetDlgItem(hwTB, IDC_DYNASHADOW)) return (const char*)"Show the dynamic shadows active.";
         if (hOver == GetDlgItem(hwTB, IDC_MOVESPRITES)) return (const char*)"Open a dialog to reorder the sprites of this frame";
+        if (hOver == GetDlgItem(hwTB, IDC_DYNATOSTAT)) return (const char*)"Convert all the dynamic content back to static content";
 }
     return "";
 }
@@ -14636,8 +14655,9 @@ void MaskDrawItem(LPDRAWITEMSTRUCT lpDIS)
     else
     {
         wchar_t coche = L'\u2610';
-        if (MaskUsed(itemID)) coche= L'\u2611';
-        swprintf_s(name, 256, L"%c Mask #%i :", coche, itemID);
+		int nused = MaskUsed(itemID);
+        if (nused > 0) coche = L'\u2611';
+        swprintf_s(name, 256, L"%c Mask #%i (%i):", coche, itemID,nused);
     }
 
     if (AllSameFramesUpdated)
@@ -14647,8 +14667,9 @@ void MaskDrawItem(LPDRAWITEMSTRUCT lpDIS)
         else if (itemID < (int)MycRom.nCompMasks)
         {
             wchar_t coche = L'\u2610';
-            if (MaskUsed(itemID)) coche = L'\u2611';
-            swprintf_s(name, 256, L"%c Mask #%i : same frames %i, with shape mode %i", coche, itemID, nSameFramesPerMask[lpDIS->itemID], nSameFramesPerMask[lpDIS->itemID + MAX_MASKS + 1]);
+			int nused = MaskUsed(itemID);
+            if (nused > 0) coche = L'\u2611';
+            swprintf_s(name, 256, L"%c Mask #%i (%i): same frames %i, with shape mode %i", coche, itemID, nused, nSameFramesPerMask[lpDIS->itemID], nSameFramesPerMask[lpDIS->itemID + MAX_MASKS + 1]);
         }
     }
 
@@ -15122,6 +15143,7 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 SetWindowSubclass(GetDlgItem(hDlg, IDC_VERTSEL), ButtonSubclassProc, 0, 0);
                 SetWindowSubclass(GetDlgItem(hDlg, IDC_DOAUTOSEL), ButtonSubclassProc, 0, 0);
                 SetWindowSubclass(GetDlgItem(hDlg, IDC_DYNASHADOW), ButtonSubclassProc, 0, 0);
+                SetWindowSubclass(GetDlgItem(hDlg, IDC_DYNATOSTAT), ButtonSubclassProc, 0, 0);
                 SendMessage(GetDlgItem(hDlg, IDC_LUMPCT), EM_LIMITTEXT, 4, 0);
                 SendMessage(GetDlgItem(hDlg, IDC_OFFSETAUTOSEL), EM_LIMITTEXT, 2, 0);
                 SendMessage(GetDlgItem(hDlg, IDC_AUTOSEL), EM_LIMITTEXT, 2, 0);
@@ -15882,10 +15904,12 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                         SelFrames[0] = acFrame;
                     }
                     if (acFrame >= MycRom.nFrames) acFrame = MycRom.nFrames - 1;
+                    acFrame = min(SelFrames[0], MycRom.nFrames - 1);
+                    SelFrames[0] = acFrame;
+                    nSelFrames = 1;
                     UpdateNewacFrame();
                     UpdateSectionList();
                     UpdateFSneeded = true;
-                    acFrame = SelFrames[0];
                     InitColorRotation();
                     SetMultiWarningF();
                     SetDlgItemText(hDlg, IDC_SAMEFRAME, L"0");
@@ -15925,10 +15949,11 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                             SelFrames[0] = acFrame;
                         }
                         if (acFrame >= MycRom.nFrames) acFrame = MycRom.nFrames - 1;
+                        SelFrames[0] = acFrame = 0;
+                        nSelFrames = 1;
                         UpdateNewacFrame();
                         UpdateSectionList();
                         UpdateFSneeded = true;
-                        acFrame = 0;
                         prevAcFrame = (UINT)-1;
                         InitColorRotation();
                         SetDlgItemText(hDlg, IDC_SAMEFRAME, L"0");
@@ -16980,6 +17005,52 @@ INT_PTR CALLBACK Toolbar_Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                     }
                     memset(Copy_Mask, 0, 256 * 64);
                     Add_Surface_To_Copy(newsel, false);
+                    return TRUE;
+                }
+                case IDC_DYNATOSTAT:
+                {
+					// convert the dynamic content to static content
+					if (MycRom.name[0] == 0) return TRUE;
+                    SaveAction(true, SA_FULLDRAW);
+                    UINT fw, fh;
+                    UINT16 *pdync, *pfr;
+					UINT8 *pdynm, *pfro;
+                    for (UINT tk = 0; tk < nSelFrames; tk++)
+                    {
+                        pfro = &MycRP.oFrames[SelFrames[tk] * MycRom.fWidth * MycRom.fHeight];
+                        if (nEditExtraResolutionF)
+                        {
+                            fw = MycRom.fWidthX;
+                            fh = MycRom.fHeightX;
+                            pdync = &MycRom.Dyna4ColsX[SelFrames[tk] * MAX_DYNA_SETS_PER_FRAMEN * MycRom.noColors];
+                            pdynm = &MycRom.DynaMasksX[SelFrames[tk] * fw * fh];
+                            pfr = &MycRom.cFramesX[SelFrames[tk] * fw * fh];
+                        }
+                        else
+                        {
+                            fw = MycRom.fWidth;
+                            fh = MycRom.fHeight;
+                            pdync = &MycRom.Dyna4Cols[SelFrames[tk] * MAX_DYNA_SETS_PER_FRAMEN * MycRom.noColors];
+                            pdynm = &MycRom.DynaMasks[SelFrames[tk] * fw * fh];
+                            pfr = &MycRom.cFrames[SelFrames[tk] * fw * fh];
+                        }
+                        for (UINT tj = 0; tj < fh; tj++)
+                        {
+                            for (UINT ti = 0; ti < fw; ti++)
+                            {
+                                if (pdynm[tj * fw + ti] == 255) continue; // no dynamic content here
+                                UINT8 pfror;
+                                if (nEditExtraResolutionF)
+                                {
+                                    if (fh == 64) pfror = pfro[ti / 2 + tj / 2 * MycRom.fWidth];
+                                    else pfror = pfro[ti * 2 + tj * 2 * MycRom.fWidth];
+                                }
+                                else pfror = pfro[tj * fw + ti];
+                                pfr[tj * fw + ti] = pdync[pdynm[tj * fw + ti] * MycRom.noColors + pfror];
+                                pdynm[tj * fw + ti] = 255;
+                            }
+                        }
+                    }
                     return TRUE;
                 }
             }
@@ -22357,7 +22428,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                     }
                     else
                     { 
-                        // either Alt or Ctrl is pressed
+                        // Alt is pressed
                         if (MycRP.Draw_Mode != 4) return;
                         // magic wand (fill) mode
                         
@@ -22369,7 +22440,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
                         }
                         if (mods & GLFW_MOD_CONTROL)
                         {
-                            // Ctrl is pressed: we select all the pixels with the same color as the one clicked!
+                            // Alt+Ctrl are pressed: we select all the pixels with the same color as the one clicked!
                             SaveAction(true, SA_COPYMASK);
                             if (mods & GLFW_MOD_SHIFT) isDel_Mode = true; else isDel_Mode = false;
                             Mouse_Mode = 7;
@@ -23116,14 +23187,15 @@ bool SetImage(HWND ButHWND, UINT ButImg)
 /// </summary>
 /// <param name="nomask">mask ID</param>
 /// <returns>true if the mask is used<returns>
-bool MaskUsed(UINT32 nomask)
+int MaskUsed(UINT32 nomask)
 {
-    if (MycRom.name[0] == 0) return false;
+    if (MycRom.name[0] == 0) return 0;
+    int nused = 0;
     for (UINT32 ti = 0; ti < MycRom.nFrames; ti++)
     {
-        if (MycRom.CompMaskID[ti] == nomask) return true;
+        if (MycRom.CompMaskID[ti] == nomask) nused++;
     }
-    return false;
+    return nused;
 }
 /// <summary>
 /// update the section list in the frame window (both comparison and colorization mode)
@@ -23317,7 +23389,7 @@ void UpdateSpriteList3(void)
     UpdateSpriteList2();
 }
 /// <summary>
-/// update the comparison mask lists in the comparison mode of the frame list (both list: to chose a mask for this frame and to list the frames using this mask)
+/// update the comparison mask lists in the comparison mode of the frame list (both list: to choose a mask for this frame and to list the frames using this mask)
 /// </summary>
 void UpdateMaskList(void)
 {
@@ -23331,16 +23403,17 @@ void UpdateMaskList(void)
     size_t tout;
     for (UINT32 ti = 0; ti < MAX_MASKS; ti++)
     {
-        if (MaskUsed(ti))
+		int nused = MaskUsed(ti);
+        if (nused > 0)
         {
             if (MycRP.Mask_Names[ti * SIZE_MASK_NAME] != 0)
                 mbstowcs_s(&tout, tname, &MycRP.Mask_Names[ti * SIZE_MASK_NAME], SIZE_MASK_NAME - 1);
             else
                 _itow_s(ti, tname, SIZE_MASK_NAME - 1, 10);
-            swprintf_s(tbuf, 256, L"\u2611 %s", tname);
+            swprintf_s(tbuf, 256, L"\u2611 (%i) %s", nused, tname);
         }
         else
-            swprintf_s(tbuf, 256, L"\u2610 %i", ti);
+            swprintf_s(tbuf, 256, L"\u2610 %i (0)", ti);
         SendMessage(hlst, CB_ADDSTRING, 0, (LPARAM)tbuf);
         SendMessage(hlst2, CB_ADDSTRING, 0, (LPARAM)tbuf);
     }
