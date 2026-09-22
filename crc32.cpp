@@ -66,6 +66,33 @@ uint32_t crc32_fast_count(const UINT8* s, size_t n, BOOL ShapeMode, UINT8* pncol
     return ~crc;
 }
 
+uint32_t crc32_fast_count_256x64(const UINT8* s, BOOL ShapeMode, UINT8* pncols) // computing a buffer CRC32, "build_crc32_table()" must have been called before the first use
+// this version counts the number of different values found in the buffer
+// special version for 256x64 frames, we only take into account the odd lines and columns
+// except for counting the colors
+{
+    *pncols = 0;
+    bool usedcolors[256];
+    memset(usedcolors, false, 256);
+    uint32_t crc = 0xFFFFFFFF;
+    for (size_t k = 0; k < 64; k++)
+    {
+        for (size_t j = 0; j < 256; j++)
+        {
+            UINT8 val = s[k * 256 + j];
+            if (!usedcolors[val])
+            {
+                usedcolors[val] = true;
+                (*pncols)++;
+            }
+            if (!(k % 2) || !(j % 2)) continue; // we skip the even lines and columns
+            if ((ShapeMode == TRUE) && (val > 1)) val = 1;
+            crc = (crc >> 8) ^ crc32_table[(val ^ crc) & 0xFF];
+        }
+    }
+    return ~crc;
+}
+
 uint32_t crc32_fast_mask_shape(const UINT8* source, const UINT8* mask, size_t n, BOOL ShapeMode) // computing a buffer CRC32 on the non-masked area, "build_crc32_table()" must have been called before the first use
 // take into account if we are in shape mode
 {

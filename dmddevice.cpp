@@ -116,6 +116,33 @@ void SendFrameToTester(unsigned int nofr, unsigned int nocolors, UINT8* pframes,
     else DmdDev_Render_16_Shades(width, height, &pframes[nofr * width * height]);
 }
 /// <summary>
+/// Search if a frame is in a dump 
+/// </summary>
+/// <param name="pframe">pointer to the frame in the MycRP.oframe buffer</param>
+/// <param name="pframe">pointer to the mask in the MycRom.CompMasks buffer, if NULL, ignore the mask</param>
+/// <param name="pdump">pointer pTesterFrames</param>
+/// <param name="ndumpframes>number of frames in pTesterFrames</param>
+/// <returns></returns>
+int CompareFrameToDump(UINT8* pframe, UINT8* pmask, UINT8* pdump, UINT ndumpframes, UINT acpos, UINT sizeframe)
+{
+    for (UINT i = 0; i < ndumpframes; i++)
+    {
+		UINT ti = (i + acpos + 1) % ndumpframes; // start searching at acpos+1 to avoid finding the same frame again
+        bool found = true;
+        for (UINT tj = 0; tj < sizeframe; tj++)
+        {
+            if (pmask && pmask[tj] > 0) continue; // masked pixel
+            if (pframe[tj] != pdump[sizeframe * ti + tj])
+            {
+                found = false;
+                break;
+            }
+        }
+        if (found) return ti;
+    }
+    return -1;
+}
+/// <summary>
 /// Load a txt dump to test it with a Serum file
 /// </summary>
 /// <param name="path">path of the file without the filename</param>

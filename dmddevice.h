@@ -60,5 +60,6 @@ const char* InitDmdDevice(char* VPpath, char* romname);
 void StopDmdDevice(void);
 void SendFrameToTester(unsigned int nofr, unsigned int nocolors, UINT8* pframes, unsigned int width, unsigned int height, unsigned char* TesterOriginalFrame);
 const char* ImportDump(char* path, char* _gamename, UINT8** ppframes, UINT** pptimecodes, UINT* nframes, UINT nocolors, UINT width, UINT height);
+int CompareFrameToDump(UINT8* pframe, UINT8* pmask, UINT8* pdump, UINT ndumpframes, UINT acpos, UINT sizeframe);
 
 #endif	

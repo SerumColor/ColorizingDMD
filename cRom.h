@@ -121,6 +121,7 @@ typedef struct
 	//UINT32		nMovMasks; // Number of moving rects=nMR
 	UINT32		nSprites; // Number of sprites=nS (max 255)
 	UINT16		nBackgrounds; // Number of background images=nB
+	BOOL		is256x64; // is the original resolution 256x64?
 	// data
 	// part for comparison
 	UINT32*		HashCode;	// UINT32[nF] hashcode/checksum
@@ -129,6 +130,7 @@ typedef struct
 								// HashCode take into account the ShapeCompMode parameter converting any '2' or '3' into a '1'
 	//UINT8*		MovRctID;	// UINT8[nF] Horizontal moving comparison rectangle ID per frame (255 if no rectangle for this frame)
 	UINT8*		CompMasks;	// UINT8[nM*fW*fH] Mask for comparison
+							// UINT8[nM*256*64] if is256x64 is TRUE
 	//UINT8*		MovRcts; // UINT8[nMR*4] Rect for Moving Comparision rectangle [x,y,w,h]. The value (<MAX_DYNA_SETS_PER_FRAME) points to a sequence of 4/16 colors in Dyna4Cols. 255 means not a dynamic content.
 	// part for colorization
 	//UINT8*		cPal;		// UINT8[3*nC*nF] Palette for each colorized frames
@@ -181,6 +183,7 @@ typedef struct
 	// Header
 	char		name[64]; // ROM name (no .zip, no path, example: afm_113b)
 	UINT8*		oFrames;	// UINT8[nF*fW*fH] Original frames (TXT converted to byte '2'->2)
+							// can be UINT8[nF*256*64] if is256x64 is TRUE
 	BOOL		activeColSet[MAX_COL_SETS]; // 4-or-16-color sets active or not
 	UINT16		ColSets[MAX_COL_SETS * 16]; // the 4-or-16-color sets
 	UINT8		acColSet; // current active 4-or-16-color set
