@@ -79,12 +79,12 @@
     <LibraryPath>E:\Mes documents\C++\libs win32;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>E:\Mes documents\C++\includes;$(IncludePath)</IncludePath>
-    <LibraryPath>E:\Mes documents\C++\libs x64;E:\Mes documents\C++\libs x64\opencv\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>E:\Mes documents\C++\includes;D:\Mes documents\C++\includes;$(IncludePath)</IncludePath>
+    <LibraryPath>D:\Mes documents\C++\libs x64;D:\Mes documents\C++\libs x64\opencv\lib;E:\Mes documents\C++\libs x64;E:\Mes documents\C++\libs x64\opencv\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <IncludePath>E:\Mes documents\C++\includes;$(IncludePath)</IncludePath>
-    <LibraryPath>E:\Mes documents\C++\libs x64;E:\Mes documents\C++\libs x64\opencv\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>E:\Mes documents\C++\includes;D:\Mes documents\C++\includes;$(IncludePath)</IncludePath>
+    <LibraryPath>D:\Mes documents\C++\libs x64;D:\Mes documents\C++\libs x64\opencv\lib;E:\Mes documents\C++\libs x64;E:\Mes documents\C++\libs x64\opencv\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -276,6 +276,7 @@
   </ItemGroup>
   <ItemGroup>
     <Text Include="manual.txt" />
+    <Text Include="notes.txt" />
   </ItemGroup>
   <ItemGroup>
     <None Include="cursor1.cur" />
