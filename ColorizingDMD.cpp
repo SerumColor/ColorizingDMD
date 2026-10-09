@@ -50,7 +50,7 @@ using namespace Gdiplus;
 
 #define MAJOR_VERSION 3
 #define MINOR_VERSION 17
-#define PATCH_VERSION 2
+#define PATCH_VERSION 3
 
 static TCHAR szWindowClass[] = _T("ColorizingDMD");
 static TCHAR szWindowClass2[] = _T("ChildWin");
@@ -6007,7 +6007,29 @@ void drawAllOctants2(int xc, int yc, int x, int y, UINT8* surface, UINT8 color)
     putpixel2(xc + y, yc - x, surface, color);
     putpixel2(xc - y, yc - x, surface, color);
 }
+void drawAllQuadrants2(int xc, int yc, int x, int y,
+    UINT8* surface, UINT8 color)
+{
+    putpixel2(xc + x, yc + y, surface, color);
+    putpixel2(xc - x, yc + y, surface, color);
+    putpixel2(xc + x, yc - y, surface, color);
+    putpixel2(xc - x, yc - y, surface, color);
+}
 
+void drawAllQuadrantsF2(int xc, int yc, int xp, int yp,
+    UINT8* surface, UINT8 color)
+{
+    for (int x = 0; x <= xp; x++)
+    {
+        for (int y = 0; y <= yp; y++)
+        {
+            putpixel2(xc + x, yc + y, surface, color);
+            putpixel2(xc - x, yc + y, surface, color);
+            putpixel2(xc + x, yc - y, surface, color);
+            putpixel2(xc - x, yc - y, surface, color);
+        }
+    }
+}
 void drawellipse(int xc, int yc, int rx, int ry, UINT8* surface, UINT8 color, BOOL filled, bool coloronly, UINT16* frame)
 {
         float dx, dy, d1, d2, x, y;
@@ -6071,46 +6093,112 @@ void drawellipse(int xc, int yc, int rx, int ry, UINT8* surface, UINT8 color, BO
         }
 }
 
-void drawcircle(int xc, int yc, int r, UINT8* surface, UINT8 color, BOOL filled, bool coloronly, UINT16* frame)
+void drawcircle(int xc, int yc, int r, UINT8* surface, UINT8 color,
+    BOOL filled, bool coloronly, UINT16* frame)
 {
-    // draw a circle with the bresenham algorithm in a monochrome memory surface (same size as the frames) or frame
-    int x = 0, y = r;
-    int d = 3 - 2 * r;
-    if (!filled) drawAllOctants(xc, yc, x, y, surface, color, coloronly, frame); else drawAllOctantsF(xc, yc, x, y, surface, color, coloronly, frame);
-    while (y >= x)
+    if (r < 0) return;
+    int x = 0;
+    int y = r;
+    // Region 1 : decision parameter multiplied by 4
+    int64_t d1 = 5LL - 4LL * r;
+    while (x < y)
     {
+        if (!filled)
+            drawAllQuadrants(xc, yc, x, y, surface, color, coloronly, frame);
+        else
+            drawAllQuadrantsF(xc, yc, x, y, surface, color, coloronly, frame);
         x++;
-        if (d > 0)
+        if (d1 < 0)
         {
-            y--;
-            d = d + 4 * (x - y) + 10;
+            d1 += 8LL * x + 4;
         }
         else
-            d = d + 4 * x + 6;
-        if (!filled) drawAllOctants(xc, yc, x, y, surface, color, coloronly, frame); else drawAllOctantsF(xc, yc, x, y, surface, color, coloronly, frame);
-    }
-}
-
-void drawcircle2(int xc, int yc, int r, UINT8* surface, UINT8 color, BOOL filled)
-{
-    // draw a circle with the bresenham algorithm in a monochrome memory surface (same size as the frames) or frame
-    int x = 0, y = r;
-    int d = 3 - 2 * r;
-    if (!filled) drawAllOctants2(xc, yc, x, y, surface, color); else drawAllOctantsF2(xc, yc, x, y, surface, color);
-    while (y >= x)
-    {
-        x++;
-        if (d > 0)
         {
             y--;
-            d = d + 4 * (x - y) + 10;
+            d1 += 8LL * (x - y) + 4;
+        }
+    }
+
+    // Region 2 : decision parameter multiplied by 4
+    int64_t d2 = (2LL * x + 1) * (2LL * x + 1)
+        + 4LL * (y - 1) * (y - 1)
+        - 4LL * r * r;
+    while (y >= 0)
+    {
+        if (!filled)
+            drawAllQuadrants(xc, yc, x, y, surface, color, coloronly, frame);
+        else
+            drawAllQuadrantsF(xc, yc, x, y, surface, color, coloronly, frame);
+
+        if (d2 > 0)
+        {
+            y--;
+            d2 += 4LL - 8LL * y;
         }
         else
-            d = d + 4 * x + 6;
-        if (!filled) drawAllOctants2(xc, yc, x, y, surface, color); else drawAllOctantsF2(xc, yc, x, y, surface, color);
+        {
+            y--;
+            x++;
+            d2 += 8LL * (x - y) + 4;
+        }
     }
 }
+void drawcircle2(int xc, int yc, int r, UINT8* surface,
+    UINT8 color, BOOL filled)
+{
+    if (r < 0) return;
 
+    int x = 0;
+    int y = r;
+
+    // Region 1
+    int64_t d1 = 5LL - 4LL * r;
+
+    while (x < y)
+    {
+        if (!filled)
+            drawAllQuadrants2(xc, yc, x, y, surface, color);
+        else
+            drawAllQuadrantsF2(xc, yc, x, y, surface, color);
+
+        x++;
+
+        if (d1 < 0)
+        {
+            d1 += 8LL * x + 4;
+        }
+        else
+        {
+            y--;
+            d1 += 8LL * (x - y) + 4;
+        }
+    }
+
+    // Region 2
+    int64_t d2 = (2LL * x + 1) * (2LL * x + 1)
+        + 4LL * (y - 1) * (y - 1)
+        - 4LL * r * r;
+
+    while (y >= 0)
+    {
+        if (!filled)
+            drawAllQuadrants2(xc, yc, x, y, surface, color);
+        else
+            drawAllQuadrantsF2(xc, yc, x, y, surface, color);
+
+        if (d2 > 0)
+        {
+            y--;
+            d2 += 4LL - 8LL * y;
+        }
+        else
+        {
+            y--;
+            x++;
+            d2 += 8LL * (x - y) + 4;
+        }
+    }
+}
 void drawrectangle(int xd, int yd, int xf, int yf, UINT8* surface, UINT8 color, BOOL isfilled, bool coloronly, UINT16* frame)
 {
     UINT fw, fh;
